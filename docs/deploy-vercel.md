@@ -6,8 +6,9 @@ Panduan ini memakai repositori `andresanjaya/forkcast`. Aplikasi Next.js dan end
 
 1. Buka [SQL Editor proyek Supabase](https://supabase.com/dashboard/project/dkkwfkerzljyjspwbwdd/sql/new).
 2. Jika tabel aplikasi belum ada, jalankan seluruh isi [`supabase/migrations/20261011000100_food_tracker.sql`](../supabase/migrations/20261011000100_food_tracker.sql) **sekali**. Jangan jalankan ulang migration `create table` pada database yang sudah berisi tabel tersebut. Migration ini mengaktifkan RLS dan kebijakan akses per pengguna.
-3. Di **Authentication → Sign In / Providers → Email**, pastikan penyedia email aktif. Jangan nonaktifkan verifikasi email hanya untuk mempercepat pengujian.
-4. Ambil **Project URL** dan **publishable key** dari **Project Settings → API Keys** atau menu **Connect**. Aplikasi tidak memerlukan password PostgreSQL, `DATABASE_URL`, atau service-role key.
+3. Jalankan seluruh isi [`supabase/migrations/20261011000200_accounts_targets.sql`](../supabase/migrations/20261011000200_accounts_targets.sql) **sekali** setelah migration pertama. Ini menambah riwayat target, parameter "tidak ingin menyebutkan", dan fungsi simpan profil/berat/target. Target yang sudah ada dipertahankan sebagai entri riwayat pertama.
+4. Di **Authentication → Sign In / Providers → Email**, pastikan penyedia email aktif. Jangan nonaktifkan verifikasi email hanya untuk mempercepat pengujian.
+5. Ambil **Project URL** dan **publishable key** dari **Project Settings → API Keys** atau menu **Connect**. Aplikasi tidak memerlukan password PostgreSQL, `DATABASE_URL`, atau service-role key.
 
 ## 2. Buat proyek Vercel
 
@@ -40,7 +41,7 @@ Aplikasi mengirim URL asal halaman saat ini sebagai `emailRedirectTo`, sehingga 
 
 - Di Vercel, buka **Project → Firewall → Configure → New Rule**. Buat aturan rate limit per IP untuk path `/api/meal/analyze` dan metode `POST`, lalu **Review Changes → Publish**. Misalnya mulai dari 5 request per 10 menit per IP dan sesuaikan berdasarkan pemakaian. Counter di dalam aplikasi hanya disimpan di memori satu Function, sehingga tidak menjamin kuota harian lintas instance.
 - Batasi kuota atau anggaran Gemini di Google AI Studio. Kunci Gemini yang pernah dibagikan di chat sebaiknya diganti sebelum digunakan di produksi; simpan penggantinya hanya di Vercel Environment Variables dan `.env.local`.
-- Buka situs produksi. Pastikan dashboard tampil, coba **Analisis foto** dengan foto makanan, koreksi kandidat dan porsi, lalu simpan. Untuk memeriksa Supabase, buka tab **Profil**, minta magic link, masuk, simpan satu catatan, lalu muat ulang halaman. Catatan akun harus tetap tampil.
+- Buka situs produksi. Pastikan dashboard tampil, coba **Analisis foto** dengan foto makanan, koreksi kandidat dan porsi, lalu simpan. Untuk memeriksa Supabase, buka tab **Profil**, daftar dengan email dan kata sandi, konfirmasi email, lalu masuk. Simpan profil, target, berat, dan satu makanan; muat ulang halaman dan pastikan semua tetap tampil. Uji juga tautan pemulihan kata sandi.
 - Jika foto gagal, periksa respons API dan **Vercel → Project → Logs**. `413` berarti foto terlalu besar; `503` dapat berarti API key, model, kuota, atau Gemini sedang tidak tersedia. Pencatatan manual tetap dapat digunakan.
 
 Vercel membatasi body Function hingga 4,5 MB. Browser menerima berkas awal hingga 8 MB, lalu mengompresnya menjadi JPEG di bawah 4 MB sebelum upload. Endpoint berjalan pada Node.js dan diberi durasi maksimum 30 detik. Lihat [batas Vercel Functions](https://vercel.com/docs/functions/limitations), [Environment Variables](https://vercel.com/docs/environment-variables), [Supabase Redirect URLs](https://supabase.com/docs/guides/auth/redirect-urls), dan [Vercel WAF Rate Limiting](https://vercel.com/docs/vercel-firewall/vercel-waf/rate-limiting).

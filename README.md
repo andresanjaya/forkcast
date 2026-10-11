@@ -6,8 +6,8 @@ Mobile-first Indonesian food logging PWA. The existing dashboard design is prese
 
 - Search the example food catalog by Indonesian name or alias. Add multiple items, change serving unit and quantity, set meal type and local date/time, review calories and macros, then save to the correct dashboard day and group.
 - Nutrition totals are calculated only from stored per-100 g values and selected grams. Each meal item stores its nutrition snapshot, source label, and calculation basis. AI never supplies calorie totals.
-- Local demo mode remains available without environment variables. It keeps meals, saved combinations, profile, and weight entries in this browser.
-- With Supabase configured, email magic-link sign-in loads and stores private profiles, meals, items, saved combinations, and weight entries. Demo and account data stay separate.
+- Local demo mode remains available without environment variables. It keeps meals, saved combinations, profile, target history, and weight entries in this browser.
+- With Supabase configured, email/password sign-up, sign-in, recovery, and the existing magic-link option load private profiles, meals, items, saved combinations, target history, and weight entries. Demo and account data stay separate; an eligible new account can import demo data once.
 - With Gemini configured, the server analyzes a compressed JPEG/PNG/WebP photo and returns candidate foods, approximate gram ranges, confidence, and a follow-up question. The user must review and confirm suggestions before saving. Unmatched foods require a comparable catalog choice or an explicit decision to omit them.
 - Installable PWA shell, offline fallback, basic empty/error states, and an account-data erase action.
 
@@ -36,17 +36,15 @@ npm run build
 
 ## Supabase setup
 
-Untuk deployment produksi, ikuti [panduan Supabase dan Vercel](docs/deploy-vercel.md).
+For production deployment, also read [the Supabase and Vercel guide](docs/deploy-vercel.md). No migration was applied to your Supabase project by this repository change. The PostgreSQL password in the earlier connection-string example was a placeholder and is not used by the app.
 
-No migration was applied to your Supabase project by this work. The PostgreSQL connection string shown in the request has a password placeholder and is neither needed nor used by the app.
+1. In [Supabase Dashboard](https://supabase.com/dashboard), open your project and **SQL Editor**. Run [the initial migration](supabase/migrations/20261011000100_food_tracker.sql) first if it has not already been applied. Then run [the account and target migration](supabase/migrations/20261011000200_accounts_targets.sql) once. The latter preserves existing targets as history, expands the profile parameter, adds target-history RLS, and creates atomic profile/weight and target save functions.
+2. In **Authentication -> Providers -> Email**, enable the Email provider. In **Authentication -> URL Configuration** (separate from the Email provider panel), set the local Site URL to `http://localhost:3000` and add `http://localhost:3000/**` as a Redirect URL. Also add the production HTTPS origin and redirect pattern before deploying. Email confirmation, password recovery, and magic links must redirect to the app.
+3. In **Connect** or **Project Settings -> API Keys**, copy the Project URL and publishable key into local `.env.local` as `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`. A legacy anon key may use `NEXT_PUBLIC_SUPABASE_ANON_KEY`. Never put a service-role or secret key in a `NEXT_PUBLIC_` variable.
+4. Restart the local server (`npm.cmd run dev` in PowerShell). In **Profil & target**, register or sign in. Save the profile, review the suggested or manual target, and save a target entry. A new account with local demo data can explicitly use **Impor data demo**; the local copy is retained. If you use email confirmation, follow the message before signing in.
+5. For a disposable local Supabase database, run [the RLS regression script](supabase/tests/20261011_user_isolation.sql) after both migrations. It checks cross-user access to profiles, meals, meal items, target history, and weight history. Do not run it against production; it inserts temporary Auth users inside a rolled-back transaction.
 
-1. In the [Supabase Dashboard](https://supabase.com/dashboard), open your project. In **SQL Editor**, create a new query, paste the complete contents of [`supabase/migrations/20261011000100_food_tracker.sql`](supabase/migrations/20261011000100_food_tracker.sql), and run it once on a fresh schema. The migration creates profiles, meals, meal items, saved meals, weight entries, indexes, grants, and owner-only RLS policies.
-2. In **Authentication → Providers → Email**, enable email sign-in. In **Authentication → URL Configuration**, set the Site URL to `http://localhost:3000` for local testing and allow `http://localhost:3000/**` as a redirect URL. Add your deployed HTTPS URL when you deploy. Magic links must be able to redirect back to the app.
-3. In the project **Connect** dialog or **Project Settings → API Keys**, copy the **Project URL** and **publishable key**. Put them in `.env.local` as `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`. A legacy anon key can instead use `NEXT_PUBLIC_SUPABASE_ANON_KEY`. These are public client values; do not use a secret/service-role key in a `NEXT_PUBLIC_` variable.
-4. Restart `npm run dev`. Open **Profil & target**, enter an email, use the magic link, and return to the app. A signed-in user starts with an empty private history; existing local demo entries are intentionally not imported.
-5. For a disposable local Supabase database, run the RLS regression script in [`supabase/tests/20261011_user_isolation.sql`](supabase/tests/20261011_user_isolation.sql) after the migration. It checks that user A cannot read or insert user B's profile, meal, or meal items. It was not run here because Docker, PostgreSQL, and Supabase CLI are unavailable in this workspace. Do not run this test against production; it inserts temporary auth users inside a rolled-back transaction.
-
-The browser uses the publishable key with the signed-in user's session; RLS enforces ownership in PostgreSQL. The Gemini route may verify a Supabase bearer token when both services are configured. No service-role key is required. See [Supabase's Next.js Auth guide](https://supabase.com/docs/guides/auth/quickstarts/nextjs) and [RLS guide](https://supabase.com/docs/guides/database/postgres/row-level-security).
+The browser uses the publishable key with the signed-in user's session; PostgreSQL RLS enforces ownership. The profile and target save functions run as the signed-in database role, so RLS still applies. No service-role key is required. See [Supabase's Auth guide](https://supabase.com/docs/guides/auth/passwords) and [RLS guide](https://supabase.com/docs/guides/database/postgres/row-level-security).
 
 ## Gemini setup
 
@@ -58,13 +56,13 @@ The key supplied in the chat was not written into source or `.env.local`. Config
 
 ## Data and estimates
 
-`src/lib/food.ts` contains the example catalog and deterministic calculation: for each nutrient, `total = sum(item.per100g × item.grams / 100)`. Custom entries require values per 100 g. Prior logs keep a snapshot so later catalog changes do not silently alter history.
+`src/lib/food.ts` contains the example catalog and deterministic meal nutrition: for each nutrient, `total = sum(item.per100g * item.grams / 100)`. Custom entries require values per 100 g. Prior logs keep a snapshot so later catalog changes do not silently alter history.
 
-The suggested calorie target uses Mifflin–St Jeor (`10 × weight kg + 6.25 × height cm − 5 × age + 5` for the male coefficient, or `− 161` for the female coefficient), activity factors 1.2, 1.35, 1.5, or 1.65, and goal adjustments −300, 0, or +250 kcal/day. It has a 1200 kcal floor and is editable.
+`src/lib/target.ts` calculates the suggested target using Mifflin-St Jeor (`10 * weight kg + 6.25 * height cm - 5 * age + 5` for the male coefficient, or `-161` for the female coefficient), activity factors 1.2, 1.35, 1.5, or 1.65, and goal adjustments -300, 0, or +250 kcal/day. It rounds to 10 kcal with a 1200 kcal floor. Choosing "prefer not to say" disables automatic estimation and leaves manual entry available. Profile changes never silently replace the active target; each saved target records its source, inputs, formula version, effective time, and optional note. Measurements use cm and kg, and the app language is Indonesian.
 
 ## Remaining limits
 
-- Supabase migration and real cross-user isolation cannot be verified until the project is configured. No Supabase account or project was accessed here.
+- The new Supabase migration and real cross-user isolation require verification in a disposable Supabase database or your configured project. No Supabase account or project was accessed here.
 - Gemini analysis requires a valid API key and available project quota. Model availability can vary by project; set `GEMINI_MODEL` if you need a different supported model.
 - The API rate counter is in memory per server instance. Use a shared limiter and deployment quotas before exposing a paid endpoint at scale.
 - Seed food numbers need review against a licensed Indonesian composition source before real nutrition claims.

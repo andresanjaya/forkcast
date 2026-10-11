@@ -32,7 +32,7 @@ export type Profile = {
   age: number;
   height: number;
   weight: number;
-  sex: "pria" | "wanita";
+  sex: "pria" | "wanita" | "tidak_menyebutkan";
   activity: "rendah" | "ringan" | "sedang" | "tinggi";
   goal: "turun" | "jaga" | "naik";
   calorieTarget: number;
@@ -85,10 +85,4 @@ export function matchCandidateFood(candidateName: string): Food | null {
   const name = normalize(candidateName);
   return foods.find((food) => normalize(food.name) === name || food.aliases.some((alias) => normalize(alias) === name)) ?? null;
 }
-export function suggestedTarget(profile: Profile): number {
-  const bmr = 10 * profile.weight + 6.25 * profile.height - 5 * profile.age + (profile.sex === "pria" ? 5 : -161);
-  const multiplier = { rendah: 1.2, ringan: 1.35, sedang: 1.5, tinggi: 1.65 }[profile.activity];
-  const adjustment = { turun: -300, jaga: 0, naik: 250 }[profile.goal];
-  return Math.max(1200, Math.round((bmr * multiplier + adjustment) / 10) * 10);
-}
-export const defaultProfile: Profile = { name: "", age: 28, height: 165, weight: 65, sex: "wanita", activity: "ringan", goal: "jaga", calorieTarget: 1850 };
+export const defaultProfile: Profile = { name: "", age: 28, height: 165, weight: 65, sex: "tidak_menyebutkan", activity: "ringan", goal: "jaga", calorieTarget: 1850 };

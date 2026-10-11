@@ -2,9 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { getSupabaseBrowser } from "@/lib/supabase/browser";
-import { deleteAllAccountData, deleteMeal as deleteRemoteMeal, deleteWeight as deleteRemoteWeight, insertMeal as insertRemoteMeal, insertSavedMeal, insertWeight as insertRemoteWeight, loadAccountData, upsertProfile } from "@/lib/supabase/data";
-import { Activity, ArrowRight, Bookmark, CalendarDays, Camera, Check, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, ClipboardList, Flame, Home, Info, Leaf, MoreHorizontal, Plus, Search, Settings2, Sparkles, Trash2, TrendingUp, Upload, UserRound, UtensilsCrossed, WifiOff, X } from "lucide-react";
-import { changeServing, defaultProfile, editMealItem, foods, itemFromFood, matchCandidateFood, mealTypes, nutrientsFor, suggestedTarget, total, type Food, type Meal, type MealItem, type MealType, type Profile, type SavedMeal, type WeightEntry } from "@/lib/food";
+import { deleteAllAccountData, deleteMeal as deleteRemoteMeal, deleteWeight as deleteRemoteWeight, importDemoMeal, importDemoSavedMeal, importDemoWeights, insertMeal as insertRemoteMeal, insertSavedMeal, loadAccountData, saveCalorieTarget, saveProfileWithWeight } from "@/lib/supabase/data";
+import ProfileView from "./ProfileView";
+import { activeTarget, addTargetRecord, profileError, putWeightRecord, validTarget, type TargetRecord } from "@/lib/target";
+import { Activity, ArrowRight, Bookmark, CalendarDays, Camera, Check, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, Flame, Home, Info, Leaf, MoreHorizontal, Plus, Search, Sparkles, Trash2, TrendingUp, Upload, UserRound, UtensilsCrossed, WifiOff, X } from "lucide-react";
+import { changeServing, defaultProfile, editMealItem, foods, itemFromFood, matchCandidateFood, mealTypes, nutrientsFor, total, type Food, type Meal, type MealItem, type MealType, type Profile, type SavedMeal, type WeightEntry } from "@/lib/food";
 
 type Tab = "beranda" | "riwayat" | "progres" | "profil";
 type EditorMode = "manual" | "foto" | "tersimpan";
@@ -23,6 +25,10 @@ export default function HomePage() {
   const [meals, setMeals] = useState<Meal[]>([]);
   const [savedMeals, setSavedMeals] = useState<SavedMeal[]>([]);
   const [weights, setWeights] = useState<WeightEntry[]>([]);
+  const [targets, setTargets] = useState<TargetRecord[]>([]);
+  const [hasProfile, setHasProfile] = useState(false);
+  const [canImport, setCanImport] = useState(false);
+  const [recoveryMode, setRecoveryMode] = useState(false);
   const [editor, setEditor] = useState<EditorMode | null>(null);
   const [mealType, setMealType] = useState<MealType>("Makan siang");
   const [mealDate, setMealDate] = useState(today);
@@ -49,10 +55,8 @@ export default function HomePage() {
   const [installPrompt, setInstallPrompt] = useState<{ prompt: () => Promise<void> } | null>(null);
   const [message, setMessage] = useState("");
   const [weightInput, setWeightInput] = useState("");
-  const [targetEdited, setTargetEdited] = useState(false);
   const [accountId, setAccountId] = useState<string | null>(null);
   const [accountEmail, setAccountEmail] = useState("");
-  const [signInEmail, setSignInEmail] = useState("");
   const [storageMode, setStorageMode] = useState<"local" | "loading" | "account" | "error">("local");
   const [saving, setSaving] = useState(false);
   const supabaseConfigured = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY));
@@ -66,6 +70,7 @@ export default function HomePage() {
         setMeals(Array.isArray(data.meals) ? data.meals : []);
         setSavedMeals(Array.isArray(data.savedMeals) ? data.savedMeals : []);
         setWeights(Array.isArray(data.weights) ? data.weights : []);
+        setTargets(Array.isArray(data.targets) ? data.targets : []);
       } else {
         const demoItems = [itemFromFood(foods[0]), itemFromFood(foods[1]), itemFromFood(foods[6])];
         setMeals([{ id: crypto.randomUUID(), date: today(), type: "Makan siang", title: "Nasi, ayam bakar & sayur", method: "manual", items: demoItems, createdAt: new Date().toISOString() }]);
@@ -80,20 +85,22 @@ export default function HomePage() {
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
     return () => { window.removeEventListener("online", onOnline); window.removeEventListener("offline", onOffline); window.removeEventListener("beforeinstallprompt", onInstall); };
   }, []);
-  useEffect(() => { if (ready && storageMode === "local") localStorage.setItem(STORAGE, JSON.stringify({ profile, meals, savedMeals, weights })); }, [ready, storageMode, profile, meals, savedMeals, weights]);
+  useEffect(() => { if (ready && storageMode === "local") localStorage.setItem(STORAGE, JSON.stringify({ profile, meals, savedMeals, weights, targets })); }, [ready, storageMode, profile, meals, savedMeals, weights, targets]);
   useEffect(() => { if (!message) return; const timeout = setTimeout(() => setMessage(""), 5000); return () => clearTimeout(timeout); }, [message]);
   useEffect(() => {
     const client = getSupabaseBrowser();
     if (!client) return;
     const { data: { subscription } } = client.auth.onAuthStateChange((event, session) => {
+      if (event === "PASSWORD_RECOVERY") { setRecoveryMode(true); setTab("profil"); }
       if (session?.user) {
         setAccountId(session.user.id); setAccountEmail(session.user.email ?? ""); setStorageMode("loading");
       } else if (event === "SIGNED_OUT") {
         setAccountId(null); setAccountEmail(""); setStorageMode("loading");
         try {
           const local = JSON.parse(localStorage.getItem(STORAGE) ?? "{}");
-          setProfile(local.profile ?? defaultProfile); setMeals(local.meals ?? []); setSavedMeals(local.savedMeals ?? []); setWeights(local.weights ?? []);
-        } catch { setProfile(defaultProfile); setMeals([]); setSavedMeals([]); setWeights([]); }
+          setProfile(local.profile ?? defaultProfile); setMeals(local.meals ?? []); setSavedMeals(local.savedMeals ?? []); setWeights(local.weights ?? []); setTargets(local.targets ?? []);
+        } catch { setProfile(defaultProfile); setMeals([]); setSavedMeals([]); setWeights([]); setTargets([]); }
+        setHasProfile(false); setCanImport(false); setRecoveryMode(false);
         setStorageMode("local");
       }
     });
@@ -106,21 +113,19 @@ export default function HomePage() {
     if (!client) return;
     loadAccountData(client, accountId).then((data) => {
       if (cancelled) return;
-      setProfile(data.profile); setMeals(data.meals); setSavedMeals(data.savedMeals); setWeights(data.weights); setStorageMode("account");
+      setProfile(data.profile); setMeals(data.meals); setSavedMeals(data.savedMeals); setWeights(data.weights); setTargets(data.targets); setHasProfile(data.hasProfile);
+      try {
+        const local = JSON.parse(localStorage.getItem(STORAGE) ?? "{}");
+        const pending = Boolean(localStorage.getItem(`porsi-import-pending-${accountId}`));
+        setCanImport(!localStorage.getItem(`porsi-imported-${accountId}`) && (pending || (!data.hasProfile && data.meals.length === 0 && Array.isArray(local.meals) && local.meals.length > 0)));
+      } catch { setCanImport(false); }
+      setStorageMode("account");
     }).catch(() => { if (!cancelled) { setStorageMode("error"); setMessage("Data akun belum bisa dimuat. Periksa migrasi dan koneksi Supabase."); } });
     return () => { cancelled = true; };
   }, [accountId, storageMode]);
-  useEffect(() => {
-    if (!accountId || storageMode !== "account") return;
-    if (profile.age < 18 || profile.age > 120 || profile.height < 100 || profile.height > 250 || profile.weight < 20 || profile.weight > 400 || profile.calorieTarget < 1000 || profile.calorieTarget > 6000) return;
-    const client = getSupabaseBrowser(); if (!client) return;
-    const timer = setTimeout(() => upsertProfile(client, accountId, profile).catch(() => setMessage("Profil belum tersinkron. Periksa koneksi dan coba ubah kembali.")), 700);
-    return () => clearTimeout(timer);
-  }, [accountId, storageMode, profile]);
-
   const dayMeals = useMemo(() => meals.filter((meal) => meal.date === date), [meals, date]);
   const dayTotal = useMemo(() => total(dayMeals.flatMap((meal) => meal.items)), [dayMeals]);
-  const target = profile.calorieTarget || suggestedTarget(profile);
+  const target = activeTarget(targets)?.calories ?? profile.calorieTarget;
   const remaining = target - dayTotal.calories;
   const filteredFoods = useMemo(() => foods.filter((food) => `${food.name} ${food.aliases.join(" ")}`.toLowerCase().includes(query.toLowerCase())).slice(0, 8), [query]);
   const recentMeals = useMemo(() => [...meals].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 5), [meals]);
@@ -176,27 +181,79 @@ export default function HomePage() {
     setMeals((current) => current.filter((meal) => meal.id !== id)); setMessage("Catatan dihapus.");
   }
   async function recordWeight(weight: number) {
-    const entry = { id: crypto.randomUUID(), date: today(), weight };
+    const entry = { id: weights.find((item) => item.date === today())?.id ?? crypto.randomUUID(), date: today(), weight };
+    const nextProfile = { ...profile, weight };
     if (accountId) {
       const client = getSupabaseBrowser(); if (!client || storageMode !== "account") return;
-      try { await insertRemoteWeight(client, accountId, entry); } catch { setMessage("Berat belum tersimpan ke akun."); return; }
+      if (!hasProfile) { setMessage("Simpan profil dahulu sebelum mencatat berat."); setTab("profil"); return; }
+      try {
+        await saveProfileWithWeight(client, nextProfile, entry.date, true);
+        const data = await loadAccountData(client, accountId);
+        setWeights(data.weights); setProfile(data.profile);
+      } catch { setMessage("Berat belum tersimpan ke akun. Periksa koneksi dan coba lagi."); return; }
+    } else {
+      setWeights((current) => putWeightRecord(current, entry)); setProfile(nextProfile);
     }
-    setWeights((current) => [entry, ...current]); setProfile((current) => ({ ...current, weight })); setWeightInput(""); setMessage("Berat badan tersimpan.");
+    setWeightInput(""); setMessage("Berat badan tersimpan.");
   }
   async function removeWeight(id: string) {
     if (accountId) {
       const client = getSupabaseBrowser(); if (!client || storageMode !== "account") return;
-      try { await deleteRemoteWeight(client, accountId, id); } catch { setMessage("Catatan berat belum terhapus."); return; }
+      try { await deleteRemoteWeight(client, id); const data = await loadAccountData(client, accountId); setWeights(data.weights); setProfile(data.profile); } catch { setMessage("Catatan berat belum terhapus."); return; }
+    } else {
+      const next = weights.filter((item) => item.id !== id);
+      setWeights(next);
+      if (next.length) setProfile((current) => ({ ...current, weight: [...next].sort((a, b) => b.date.localeCompare(a.date))[0].weight }));
     }
-    setWeights((current) => current.filter((item) => item.id !== id));
   }
-  async function signIn(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const client = getSupabaseBrowser(); if (!client) return;
-    const email = signInEmail.trim();
-    if (!email) return;
-    const { error } = await client.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.origin } });
-    setMessage(error ? "Tautan masuk belum dapat dikirim. Periksa email dan konfigurasi Auth." : "Tautan masuk dikirim. Buka emailmu untuk melanjutkan.");
+  async function saveProfile(profileDraft: Profile) {
+    const error = profileError(profileDraft);
+    if (error || !validTarget(profileDraft.calorieTarget)) throw new Error(error ?? "Target tidak valid.");
+    if (accountId) {
+      const client = getSupabaseBrowser(); if (!client || storageMode !== "account") throw new Error("Data akun belum siap.");
+      await saveProfileWithWeight(client, profileDraft, today());
+      const data = await loadAccountData(client, accountId);
+      setWeights(data.weights); setProfile(data.profile); setHasProfile(true);
+    } else {
+      if (profileDraft.weight !== profile.weight) setWeights((current) => putWeightRecord(current, { id: current.find((item) => item.date === today())?.id ?? crypto.randomUUID(), date: today(), weight: profileDraft.weight }));
+      setProfile(profileDraft);
+    }
+  }
+  async function saveTarget(record: TargetRecord) {
+    if (!validTarget(record.calories)) throw new Error("Target tidak valid.");
+    if (accountId) {
+      const client = getSupabaseBrowser(); if (!client || storageMode !== "account") throw new Error("Data akun belum siap.");
+      await saveCalorieTarget(client, record);
+    }
+    setTargets((current) => addTargetRecord(current, record));
+    setProfile((current) => ({ ...current, calorieTarget: record.calories }));
+  }
+  async function importDemo() {
+    if (!accountId || !canImport || storageMode !== "account") throw new Error("Impor tidak tersedia.");
+    const client = getSupabaseBrowser(); if (!client) throw new Error("Supabase tidak tersedia.");
+    const local = JSON.parse(localStorage.getItem(STORAGE) ?? "{}");
+    const importedProfile = local.profile as Profile | undefined;
+    if (!importedProfile || profileError(importedProfile) || !validTarget(importedProfile.calorieTarget)) throw new Error("Profil demo tidak valid.");
+    localStorage.setItem(`porsi-import-pending-${accountId}`, "true");
+    const mappingKey = `porsi-import-ids-${accountId}`;
+    const idMap = JSON.parse(localStorage.getItem(mappingKey) ?? "{}") as Record<string, string>;
+    const importId = (kind: string, id: string) => {
+      const key = `${kind}:${id}`;
+      if (!idMap[key]) { idMap[key] = crypto.randomUUID(); localStorage.setItem(mappingKey, JSON.stringify(idMap)); }
+      return idMap[key];
+    };
+    await saveProfileWithWeight(client, importedProfile, today());
+    const localTargets = Array.isArray(local.targets) ? local.targets as TargetRecord[] : [];
+    const records = localTargets.length ? [...localTargets].sort((a, b) => a.effectiveAt.localeCompare(b.effectiveAt)) : [{ id: crypto.randomUUID(), calories: importedProfile.calorieTarget, source: "manual" as const, formulaVersion: null, inputs: null, effectiveAt: new Date().toISOString(), createdAt: new Date().toISOString(), note: "Diimpor dari demo" }];
+    if (!localTargets.length) { local.targets = records; localStorage.setItem(STORAGE, JSON.stringify(local)); }
+    for (const record of records) await saveCalorieTarget(client, { ...record, id: importId("target", record.id) });
+    for (const meal of (Array.isArray(local.meals) ? local.meals : []) as Meal[]) await importDemoMeal(client, accountId, { ...meal, id: importId("meal", meal.id), items: meal.items.map((item) => ({ ...item, id: importId("item", item.id) })) });
+    for (const saved of (Array.isArray(local.savedMeals) ? local.savedMeals : []) as SavedMeal[]) await importDemoSavedMeal(client, accountId, { ...saved, id: importId("saved", saved.id) });
+    await importDemoWeights(client, accountId, ((Array.isArray(local.weights) ? local.weights : []) as WeightEntry[]).map((entry) => ({ ...entry, id: importId("weight", entry.id) })));
+    const data = await loadAccountData(client, accountId);
+    setProfile(data.profile); setMeals(data.meals); setSavedMeals(data.savedMeals); setWeights(data.weights); setTargets(data.targets); setHasProfile(true); setCanImport(false);
+    localStorage.setItem(`porsi-imported-${accountId}`, "true");
+    localStorage.removeItem(`porsi-import-pending-${accountId}`);
   }
   async function removeAllData() {
     if (!confirm(accountId ? "Hapus semua catatan akun dan profil? Akun masuk tetap ada." : "Hapus semua catatan, profil, dan berat dari perangkat ini?")) return;
@@ -208,7 +265,7 @@ export default function HomePage() {
       return;
     }
     localStorage.removeItem(STORAGE);
-    setMeals([]); setSavedMeals([]); setWeights([]); setProfile(defaultProfile); setMessage("Data catatan telah dihapus.");
+    setMeals([]); setSavedMeals([]); setWeights([]); setTargets([]); setProfile(defaultProfile); setMessage("Data catatan telah dihapus.");
   }
   function addCustom() {
     const calories = Number(customCalories), protein = Number(customProtein), carbs = Number(customCarbs), fat = Number(customFat);
@@ -278,8 +335,8 @@ export default function HomePage() {
           <div className="below-grid"><section className="quick-card"><div className="quick-illustration"><div className="plate"><span>🥗</span></div><span className="sparkle-one">✦</span><span className="sparkle-two">✧</span></div><div><span className="eyebrow">CARA CEPAT</span><h2>Satu foto, satu langkah awal.</h2><p>Kenali kandidat makanan dari foto, lalu sesuaikan porsinya sebelum disimpan.</p><button className="dark-button" onClick={() => { setMealType("Makan siang"); openEditor("foto"); }}><Camera size={17} /> Coba analisis foto <ArrowRight size={17} /></button></div></section><section className="insight-card"><span className="eyebrow">PENGINGAT LEMBUT</span><div className="insight-icon"><Leaf size={22} /></div><h2>Angka adalah panduan, bukan penilaian.</h2><p>Porsi dan cara memasak bisa berbeda. Koreksi estimasi agar catatanmu lebih dekat dengan makanan yang benar-benar kamu makan.</p></section></div>
         </>}
         {tab === "riwayat" && <><PageIntro eyebrow="CATATANMU" title="Riwayat makan" subtitle="Semua makanan yang kamu catat, tersusun dari yang terbaru." /><div className="history-actions"><button className="primary-button" onClick={() => openEditor("manual")}><Plus size={18} /> Catat makanan</button><button className="outline-button" onClick={() => openEditor("tersimpan")}><Bookmark size={17} /> Makanan tersimpan</button></div>{meals.length ? [...meals].sort((a, b) => `${b.date}${b.createdAt}`.localeCompare(`${a.date}${a.createdAt}`)).map((meal) => <div className="history-card" key={meal.id}><div className="history-date">{formatDate(meal.date)} · {meal.eatenAt ? new Date(meal.eatenAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) : ""} · {meal.type}</div><div className="history-main"><div><h3>{meal.title}</h3><p>{meal.items.map((item) => `${item.name} ${number(item.grams)} g`).join(" · ")}</p><small>{meal.method === "foto" ? "Ditinjau dari foto" : meal.method === "tersimpan" ? "Dari makanan tersimpan" : "Dicatat manual"} · Estimasi</small></div><div className="history-nutrition"><strong>{number(total(meal.items).calories)} <small>kkal</small></strong><span>P {number(total(meal.items).protein)} · K {number(total(meal.items).carbs)} · L {number(total(meal.items).fat)} g</span></div></div><div className="history-footer"><button onClick={() => { setDate(meal.date); setMealType(meal.type); openEditor("manual", meal.items, meal.title); }}>Catat lagi <ArrowRight size={15} /></button><button onClick={() => saveExistingCombination(meal)}><Bookmark size={15} /> Simpan kombinasi</button><button className="danger-text" onClick={() => removeMeal(meal.id)}><Trash2 size={15} /> Hapus</button></div></div>) : <EmptyState icon={<UtensilsCrossed size={27} />} title="Belum ada catatan" description="Mulai dengan mencari makanan atau menambahkan dari foto." action="Catat makanan" onAction={() => openEditor("manual")} />}</>}
-        {tab === "progres" && <><PageIntro eyebrow="GAMBARAN BESAR" title="Progresmu" subtitle="Lihat pola dari waktu ke waktu, dengan ruang untuk hari yang berbeda." /><div className="progress-grid"><section className="panel"><div className="card-top"><div><span className="card-kicker">7 HARI TERAKHIR</span><h2>Kalori harian</h2></div><span className="card-soft-icon"><Activity size={19} /></span></div><div className="bar-chart" aria-label="Grafik kalori tujuh hari terakhir">{dailyHistory.map((day) => <div className="bar-column" key={day.date}><div className="bar-track"><div className="bar-fill" style={{ height: `${Math.min(day.calories / Math.max(target, 1) * 100, 100)}%` }} title={`${formatDate(day.date)}: ${number(day.calories)} kkal`} /></div><span>{formatDate(day.date, { weekday: "short" })}</span><small>{day.calories ? number(day.calories) : "—"}</small></div>)}</div><p className="microcopy">Hari tanpa catatan ditampilkan kosong, bukan sebagai nol konsumsi.</p></section><section className="panel"><div className="card-top"><div><span className="card-kicker">BERAT BADAN</span><h2>Catatan berat</h2></div><span className="card-soft-icon"><TrendingUp size={19} /></span></div><div className="weight-current"><strong>{weights.length ? [...weights].sort((a, b) => b.date.localeCompare(a.date))[0].weight : profile.weight} <small>kg</small></strong><span>{weights.length ? "Catatan terakhir" : "Dari profil"}</span></div><form className="weight-form" onSubmit={(event) => { event.preventDefault(); const weight = Number(weightInput); if (weight < 20 || weight > 400) { setMessage("Masukkan berat antara 20–400 kg."); return; } void recordWeight(weight); }}><label htmlFor="weight">Catat berat hari ini</label><div><input id="weight" type="number" step="0.1" min="20" max="400" placeholder="Contoh: 65,5" value={weightInput} onChange={(event) => setWeightInput(event.target.value)} required /><button className="primary-button" type="submit">Simpan</button></div></form>{weights.length > 0 && <div className="weight-list">{[...weights].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5).map((entry) => <div key={entry.id}><span>{formatDate(entry.date)}</span><strong>{entry.weight} kg</strong><button aria-label={`Hapus berat ${entry.date}`} onClick={() => removeWeight(entry.id)}><X size={15} /></button></div>)}</div>}</section></div></>}
-        {tab === "profil" && <><PageIntro eyebrow="TENTANG KAMU" title="Profil & target" subtitle="Sesuaikan perkiraan dengan kebutuhan dan kenyamananmu." /><div className="profile-grid"><section className="panel"><div className="card-top"><div><span className="card-kicker">DATA DASAR</span><h2>Profilmu</h2></div><span className="card-soft-icon"><UserRound size={19} /></span></div><div className="form-grid"><Field label="Nama panggilan (opsional)"><input value={profile.name} onChange={(event) => setProfile({ ...profile, name: event.target.value })} placeholder="Panggilanmu" /></Field><Field label="Usia"><input type="number" min="18" max="120" value={profile.age} onChange={(event) => setProfile({ ...profile, age: Number(event.target.value) })} /></Field><Field label="Tinggi (cm)"><input type="number" min="100" max="250" value={profile.height} onChange={(event) => setProfile({ ...profile, height: Number(event.target.value) })} /></Field><Field label="Berat (kg)"><input type="number" min="20" max="400" step="0.1" value={profile.weight} onChange={(event) => setProfile({ ...profile, weight: Number(event.target.value) })} /></Field><Field label="Parameter rumus dasar"><select value={profile.sex} onChange={(event) => setProfile({ ...profile, sex: event.target.value as Profile["sex"] })}><option value="wanita">Koefisien wanita</option><option value="pria">Koefisien pria</option></select></Field><Field label="Aktivitas"><select value={profile.activity} onChange={(event) => setProfile({ ...profile, activity: event.target.value as Profile["activity"] })}><option value="rendah">Rendah · banyak duduk</option><option value="ringan">Ringan · bergerak sesekali</option><option value="sedang">Sedang · aktif rutin</option><option value="tinggi">Tinggi · sangat aktif</option></select></Field><Field label="Tujuan"><select value={profile.goal} onChange={(event) => setProfile({ ...profile, goal: event.target.value as Profile["goal"] })}><option value="turun">Turun berat</option><option value="jaga">Jaga berat</option><option value="naik">Naik berat</option></select></Field></div></section><section className="panel target-panel"><div className="card-top"><div><span className="card-kicker">PANDUAN HARIAN</span><h2>Target kalorimu</h2></div><span className="card-soft-icon"><Settings2 size={19} /></span></div><div className="suggested-target"><span>Perkiraan dari profil</span><strong>{number(suggestedTarget(profile))} <small>kkal/hari</small></strong></div><Field label="Target pilihanmu (kkal/hari)"><input type="number" min="1000" max="6000" value={profile.calorieTarget} onChange={(event) => { setTargetEdited(true); setProfile({ ...profile, calorieTarget: Number(event.target.value) }); }} /></Field><button className="text-button" onClick={() => { setProfile((current) => ({ ...current, calorieTarget: suggestedTarget(current) })); setTargetEdited(false); }}>Gunakan perkiraan <ArrowRight size={16} /></button>{targetEdited && <p className="saved-hint"><Check size={15} /> Target pilihanmu tersimpan otomatis di perangkat ini.</p>}<div className="formula-note"><CircleHelp size={18} /><p>Perkiraan memakai rumus Mifflin–St Jeor dan faktor aktivitas 1,2–1,65; tujuan turun −300 kkal, naik +250 kkal. Ini bukan saran medis. Kamu bisa mengubah target kapan saja.</p></div></section></div><section className="panel account-panel"><span className="card-kicker">AKUN</span><h2>{accountId ? "Tersambung ke Supabase" : "Simpan lintas perangkat"}</h2>{accountId ? <><p>{accountEmail}</p><button className="outline-button" onClick={() => getSupabaseBrowser()?.auth.signOut()}>Keluar dari akun</button></> : supabaseConfigured ? <form className="account-form" onSubmit={signIn}><p>Masuk dengan tautan email. Catatan demo tetap terpisah dari akunmu.</p><input type="email" required placeholder="Email kamu" value={signInEmail} onChange={(event) => setSignInEmail(event.target.value)} /><button className="primary-button" type="submit">Kirim tautan masuk</button></form> : <p>Mode demo aktif. Tambahkan URL proyek dan publishable key ke .env.local untuk mengaktifkan masuk dengan email.</p>}</section><section className="panel privacy-panel"><div><span className="card-kicker">DATA & PRIVASI</span><h2>{accountId ? "Data akun" : "Mode demo lokal"}</h2><p>{accountId ? "Catatan akunmu disimpan di Supabase. Foto tidak disimpan." : "Catatan demo berada di penyimpanan browser perangkat ini. Foto tidak disimpan."}</p><p>Untuk memasang Porsi: di iPhone gunakan Bagikan → Tambahkan ke Layar Utama; di Android pilih Instal aplikasi pada menu browser.</p></div><button className="outline-button danger-text" onClick={removeAllData}><Trash2 size={17} /> {accountId ? "Hapus data akun" : "Hapus semua data"}</button></section></>}
+        {tab === "progres" && <><PageIntro eyebrow="GAMBARAN BESAR" title="Progresmu" subtitle="Lihat pola dari waktu ke waktu, dengan ruang untuk hari yang berbeda." /><div className="progress-grid"><section className="panel"><div className="card-top"><div><span className="card-kicker">7 HARI TERAKHIR</span><h2>Kalori harian</h2></div><span className="card-soft-icon"><Activity size={19} /></span></div><div className="bar-chart" aria-label="Grafik kalori tujuh hari terakhir">{dailyHistory.map((day) => <div className="bar-column" key={day.date}><div className="bar-track"><div className="bar-fill" style={{ height: `${Math.min(day.calories / Math.max(target, 1) * 100, 100)}%` }} title={`${formatDate(day.date)}: ${number(day.calories)} kkal`} /></div><span>{formatDate(day.date, { weekday: "short" })}</span><small>{day.calories ? number(day.calories) : "—"}</small></div>)}</div><p className="microcopy">Hari tanpa catatan ditampilkan kosong, bukan sebagai nol konsumsi.</p></section><section className="panel"><div className="card-top"><div><span className="card-kicker">BERAT BADAN</span><h2>Catatan berat</h2></div><span className="card-soft-icon"><TrendingUp size={19} /></span></div><div className="weight-current"><strong>{weights.length ? [...weights].sort((a, b) => b.date.localeCompare(a.date))[0].weight : profile.weight} <small>kg</small></strong><span>{weights.length ? "Catatan terakhir" : "Dari profil"}</span></div><form className="weight-form" onSubmit={(event) => { event.preventDefault(); const weight = Number(weightInput); if (weight < 20 || weight > 400) { setMessage("Masukkan berat antara 20–400 kg."); return; } void recordWeight(weight); }}><label htmlFor="weight">Catat berat hari ini</label><div><input id="weight" type="number" step="0.1" min="20" max="400" placeholder="Contoh: 65,5" value={weightInput} onChange={(event) => setWeightInput(event.target.value)} required /><button className="primary-button" type="submit">Simpan</button></div></form>{weights.length > 0 && <div className="weight-list">{[...weights].sort((a, b) => b.date.localeCompare(a.date)).map((entry) => <div key={entry.id}><span>{formatDate(entry.date)}</span><strong>{entry.weight} kg</strong><button aria-label={`Hapus berat ${entry.date}`} onClick={() => removeWeight(entry.id)}><X size={15} /></button></div>)}</div>}</section></div></>}
+        {tab === "profil" && <ProfileView profile={profile} targets={targets} accountId={accountId} accountEmail={accountEmail} storageMode={storageMode} supabaseConfigured={supabaseConfigured} hasProfile={hasProfile} canImport={canImport} recoveryMode={recoveryMode} onRecovered={() => setRecoveryMode(false)} onSaveProfile={saveProfile} onSaveTarget={saveTarget} onImport={importDemo} onRemoveAll={() => void removeAllData()} />}
       </div>
     </main>
     <button className="floating-add" onClick={() => openEditor("manual")} aria-label="Catat makanan"><Plus size={24} /><span>Catat makanan</span></button>

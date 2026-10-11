@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { defaultProfile, type Meal, type MealItem, type Profile, type SavedMeal, type WeightEntry } from "@/lib/food";
+import type { TargetRecord } from "@/lib/target";
 
 type Row = Record<string, unknown>;
 const numeric = (value: unknown) => Number(value ?? 0);
@@ -12,13 +13,14 @@ const mealItemFromRow = (row: Row): MealItem => ({
 });
 
 export async function loadAccountData(client: SupabaseClient, userId: string) {
-  const [profileResult, mealsResult, savedResult, weightsResult] = await Promise.all([
+  const [profileResult, mealsResult, savedResult, weightsResult, targetsResult] = await Promise.all([
     client.from("profiles").select("*").eq("user_id", userId).maybeSingle(),
     client.from("meals").select("*").eq("user_id", userId).order("eaten_at", { ascending: false }),
     client.from("saved_meals").select("*").eq("user_id", userId).order("created_at", { ascending: false }),
     client.from("weight_entries").select("*").eq("user_id", userId).order("entry_date", { ascending: false }),
+    client.from("calorie_target_history").select("*").eq("user_id", userId).order("effective_at", { ascending: false }),
   ]);
-  for (const result of [profileResult, mealsResult, savedResult, weightsResult]) if (result.error) throw result.error;
+  for (const result of [profileResult, mealsResult, savedResult, weightsResult, targetsResult]) if (result.error) throw result.error;
   const mealRows = (mealsResult.data ?? []) as Row[];
   const itemResult = mealRows.length
     ? await client.from("meal_items").select("*").eq("user_id", userId).order("position", { ascending: true })
@@ -39,15 +41,32 @@ export async function loadAccountData(client: SupabaseClient, userId: string) {
     title: String(row.title), method: row.entry_method as Meal["method"], createdAt: String(row.created_at), items: itemsByMeal.get(String(row.id)) ?? [],
   }));
   const savedMeals: SavedMeal[] = ((savedResult.data ?? []) as Row[]).map((row) => ({ id: String(row.id), title: String(row.title), items: Array.isArray(row.items) ? row.items as MealItem[] : [] }));
-  const weights: WeightEntry[] = ((weightsResult.data ?? []) as Row[]).map((row) => ({ id: String(row.id), date: String(row.entry_date), weight: numeric(row.weight_kg) }));
-  return { profile, meals, savedMeals, weights };
+  const weights: WeightEntry[] = ((weightsResult.data ?? []) as Row[]).filter((row) => !row.superseded_at).map((row) => ({ id: String(row.id), date: String(row.entry_date), weight: numeric(row.weight_kg) }));
+  const targets: TargetRecord[] = ((targetsResult.data ?? []) as Row[]).map((row) => ({
+    id: String(row.id), calories: numeric(row.calories), source: row.source as TargetRecord["source"],
+    formulaVersion: row.formula_version ? String(row.formula_version) : null,
+    inputs: row.inputs as TargetRecord["inputs"], effectiveAt: String(row.effective_at),
+    createdAt: String(row.created_at), note: String(row.note ?? ""),
+  }));
+  return { profile, hasProfile: Boolean(p), meals, savedMeals, weights, targets };
 }
 
-export async function upsertProfile(client: SupabaseClient, userId: string, profile: Profile) {
-  const { error } = await client.from("profiles").upsert({
-    user_id: userId, display_name: profile.name, locale: "id-ID", age: profile.age, height_cm: profile.height, weight_kg: profile.weight,
-    formula_sex: profile.sex, activity: profile.activity, goal: profile.goal, calorie_target: profile.calorieTarget, updated_at: new Date().toISOString(),
-  }, { onConflict: "user_id" });
+export async function saveProfileWithWeight(client: SupabaseClient, profile: Profile, localDate: string, recordWeight = false) {
+  const { error } = await client.rpc("save_profile_with_weight", {
+    p_display_name: profile.name.trim(), p_age: profile.age, p_height_cm: profile.height,
+    p_weight_kg: profile.weight, p_formula_sex: profile.sex, p_activity: profile.activity,
+    p_goal: profile.goal, p_calorie_target: profile.calorieTarget, p_local_date: localDate,
+    p_record_weight: recordWeight,
+  });
+  if (error) throw error;
+}
+
+export async function saveCalorieTarget(client: SupabaseClient, record: TargetRecord) {
+  const { error } = await client.rpc("save_calorie_target", {
+    p_id: record.id, p_calories: record.calories, p_source: record.source,
+    p_formula_version: record.formulaVersion, p_inputs: record.inputs,
+    p_effective_at: record.effectiveAt, p_note: record.note,
+  });
   if (error) throw error;
 }
 
@@ -70,6 +89,41 @@ export async function insertMeal(client: SupabaseClient, userId: string, meal: M
   }
 }
 
+export async function importDemoMeal(client: SupabaseClient, userId: string, meal: Meal) {
+  const { error: mealError } = await client.from("meals").upsert({
+    id: meal.id, user_id: userId, eaten_at: meal.eatenAt ?? meal.createdAt, local_date: meal.date,
+    meal_type: meal.type, title: meal.title, entry_method: meal.method, created_at: meal.createdAt,
+  }, { onConflict: "id" });
+  if (mealError) throw mealError;
+  const { error: itemsError } = await client.from("meal_items").upsert(meal.items.map((item, position) => ({
+    id: item.id, meal_id: meal.id, user_id: userId, food_id: item.foodId, name_snapshot: item.name,
+    quantity: item.quantity, unit: item.unit, grams_per_unit: item.gramsPerUnit, grams: item.grams,
+    calories_per_100g: item.per100g.calories, protein_per_100g: item.per100g.protein,
+    carbs_per_100g: item.per100g.carbs, fat_per_100g: item.per100g.fat,
+    source_label: item.source, user_corrected: item.corrected, position,
+  })), { onConflict: "id" });
+  if (itemsError) throw itemsError;
+}
+
+export async function importDemoSavedMeal(client: SupabaseClient, userId: string, saved: SavedMeal) {
+  const { error } = await client.from("saved_meals").upsert({ id: saved.id, user_id: userId, title: saved.title, items: saved.items }, { onConflict: "id" });
+  if (error) throw error;
+}
+
+export async function importDemoWeights(client: SupabaseClient, userId: string, weights: WeightEntry[]) {
+  const { data, error } = await client.from("weight_entries").select("entry_date").eq("user_id", userId).is("superseded_at", null);
+  if (error) throw error;
+  const existing = new Set((data ?? []).map((row) => String(row.entry_date)));
+  for (const entry of weights) {
+    if (existing.has(entry.date)) continue;
+    const { error: insertError } = await client.from("weight_entries").insert({
+      id: entry.id, user_id: userId, entry_date: entry.date, weight_kg: entry.weight,
+    });
+    if (insertError) throw insertError;
+    existing.add(entry.date);
+  }
+}
+
 export async function deleteMeal(client: SupabaseClient, userId: string, id: string) {
   const { error } = await client.from("meals").delete().eq("id", id).eq("user_id", userId);
   if (error) throw error;
@@ -78,16 +132,12 @@ export async function insertSavedMeal(client: SupabaseClient, userId: string, sa
   const { error } = await client.from("saved_meals").insert({ id: saved.id, user_id: userId, title: saved.title, items: saved.items });
   if (error) throw error;
 }
-export async function insertWeight(client: SupabaseClient, userId: string, entry: WeightEntry) {
-  const { error } = await client.from("weight_entries").insert({ id: entry.id, user_id: userId, entry_date: entry.date, weight_kg: entry.weight });
-  if (error) throw error;
-}
-export async function deleteWeight(client: SupabaseClient, userId: string, id: string) {
-  const { error } = await client.from("weight_entries").delete().eq("id", id).eq("user_id", userId);
+export async function deleteWeight(client: SupabaseClient, id: string) {
+  const { error } = await client.rpc("remove_weight_entry", { p_id: id });
   if (error) throw error;
 }
 export async function deleteAllAccountData(client: SupabaseClient, userId: string) {
-  for (const table of ["meals", "saved_meals", "weight_entries", "profiles"]) {
+  for (const table of ["meals", "saved_meals", "weight_entries", "calorie_target_history", "profiles"]) {
     const { error } = await client.from(table).delete().eq("user_id", userId);
     if (error) throw error;
   }

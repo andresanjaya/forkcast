@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { changeServing, editMealItem, foods, itemFromFood, matchCandidateFood, nutrientsFor, suggestedTarget, total } from "../src/lib/food.ts";
+import { changeServing, editMealItem, foods, itemFromFood, matchCandidateFood, nutrientsFor, total } from "../src/lib/food.ts";
+import { estimateTarget } from "../src/lib/target.ts";
 
 test("nutrition uses the stored snapshot and selected gram amount", () => {
   const item = itemFromFood(foods[0]);
@@ -15,10 +16,10 @@ test("nutrition uses the stored snapshot and selected gram amount", () => {
 
 test("suggested target responds to activity and goal and respects minimum", () => {
   const base = { name: "", age: 30, height: 165, weight: 65, sex: "wanita", activity: "rendah", goal: "jaga", calorieTarget: 0 };
-  const maintain = suggestedTarget(base);
-  assert.ok(suggestedTarget({ ...base, activity: "sedang" }) > maintain);
-  assert.ok(suggestedTarget({ ...base, goal: "turun" }) <= maintain);
-  assert.ok(suggestedTarget({ ...base, weight: 25, goal: "turun" }) >= 1200);
+  const maintain = estimateTarget(base).calories;
+  assert.ok(estimateTarget({ ...base, activity: "sedang" }).calories > maintain);
+  assert.ok(estimateTarget({ ...base, goal: "turun" }).calories <= maintain);
+  assert.ok(estimateTarget({ ...base, weight: 25, goal: "turun" }).calories >= 1200);
 });
 
 test("editing one item leaves other items and original snapshots unchanged", () => {
