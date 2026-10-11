@@ -25,6 +25,8 @@ npm run dev
 
 Open <http://localhost:3000>. On Windows PowerShell where `npm.ps1` is disabled, use `npm.cmd`. Leave all variables blank for demo mode.
 
+The PWA, iOS home screen, and favicon use [`assets/Forkcast-Concept-03-500x500.png`](assets/Forkcast-Concept-03-500x500.png). Run `npm run icons` after replacing this source image to regenerate the PNG exports.
+
 ```bash
 npm run typecheck
 npm run lint

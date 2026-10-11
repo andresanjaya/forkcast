@@ -1,5 +1,5 @@
-const CACHE = "porsi-shell-v1";
-const SHELL = ["/", "/icon.svg", "/icon-192.png", "/icon-512.png"];
+const CACHE = "porsi-shell-v2";
+const SHELL = ["/", "/favicon-32.png", "/favicon-48.png", "/apple-touch-icon.png", "/icon-192.png", "/icon-512.png"];
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)));
   self.skipWaiting();
