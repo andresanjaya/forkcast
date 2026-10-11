@@ -7,8 +7,9 @@ Panduan ini memakai repositori `andresanjaya/forkcast`. Aplikasi Next.js dan end
 1. Buka [SQL Editor proyek Supabase](https://supabase.com/dashboard/project/dkkwfkerzljyjspwbwdd/sql/new).
 2. Jika tabel aplikasi belum ada, jalankan seluruh isi [`supabase/migrations/20261011000100_food_tracker.sql`](../supabase/migrations/20261011000100_food_tracker.sql) **sekali**. Jangan jalankan ulang migration `create table` pada database yang sudah berisi tabel tersebut. Migration ini mengaktifkan RLS dan kebijakan akses per pengguna.
 3. Jalankan seluruh isi [`supabase/migrations/20261011000200_accounts_targets.sql`](../supabase/migrations/20261011000200_accounts_targets.sql) **sekali** setelah migration pertama. Ini menambah riwayat target, parameter "tidak ingin menyebutkan", dan fungsi simpan profil/berat/target. Target yang sudah ada dipertahankan sebagai entri riwayat pertama.
-4. Di **Authentication → Sign In / Providers → Email**, pastikan penyedia email aktif. Jangan nonaktifkan verifikasi email hanya untuk mempercepat pengujian.
-5. Ambil **Project URL** dan **publishable key** dari **Project Settings → API Keys** atau menu **Connect**. Aplikasi tidak memerlukan password PostgreSQL, `DATABASE_URL`, atau service-role key.
+4. Jalankan seluruh isi [`supabase/migrations/20261012000100_personal_meal_memory.sql`](../supabase/migrations/20261012000100_personal_meal_memory.sql) **sekali** setelah migration kedua. Ini menambah detail kombinasi tersimpan dan tabel koreksi makanan dengan RLS per pengguna.
+5. Di **Authentication → Sign In / Providers → Email**, pastikan penyedia email aktif. Jangan nonaktifkan verifikasi email hanya untuk mempercepat pengujian.
+6. Ambil **Project URL** dan **publishable key** dari **Project Settings → API Keys** atau menu **Connect**. Aplikasi tidak memerlukan password PostgreSQL, `DATABASE_URL`, atau service-role key.
 
 ## 2. Buat proyek Vercel
 

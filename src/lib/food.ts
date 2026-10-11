@@ -25,7 +25,15 @@ export type MealItem = {
   corrected: boolean;
 };
 export type Meal = { id: string; date: string; eatenAt?: string; type: MealType; title: string; method: "manual" | "foto" | "tersimpan"; items: MealItem[]; createdAt: string };
-export type SavedMeal = { id: string; title: string; items: MealItem[] };
+export type SavedMeal = {
+  id: string;
+  title: string;
+  note?: string;
+  category?: MealType | null;
+  items: MealItem[];
+  createdAt?: string;
+  updatedAt?: string;
+};
 export type WeightEntry = { id: string; date: string; weight: number };
 export type Profile = {
   name: string;

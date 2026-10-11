@@ -3,7 +3,7 @@
 -- the authenticated API role, including attempts to attach an item to another meal.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(16);
+select plan(26);
 
 insert into auth.users (id, email) values
   ('11111111-1111-4111-8111-111111111111', 'porsi-a@example.invalid'),
@@ -24,6 +24,12 @@ insert into public.calorie_target_history (id, user_id, calories, source) values
 insert into public.weight_entries (id, user_id, entry_date, weight_kg) values
   ('aaaaaaaa-2000-4000-8000-000000000001', '11111111-1111-4111-8111-111111111111', current_date, 70),
   ('bbbbbbbb-2000-4000-8000-000000000001', '22222222-2222-4222-8222-222222222222', current_date, 60);
+insert into public.saved_meals (id, user_id, title, items) values
+  ('aaaaaaaa-3000-4000-8000-000000000001', '11111111-1111-4111-8111-111111111111', 'Saved A', '[]'::jsonb),
+  ('bbbbbbbb-3000-4000-8000-000000000001', '22222222-2222-4222-8222-222222222222', 'Saved B', '[]'::jsonb);
+insert into public.food_corrections (id, user_id, candidate_text, candidate_key, selected_name, quantity, unit, grams, item_snapshot) values
+  ('aaaaaaaa-4000-4000-8000-000000000001', '11111111-1111-4111-8111-111111111111', 'Ayam', 'ayam', 'Ayam bakar', 1, 'potong', 100, '{}'::jsonb),
+  ('bbbbbbbb-4000-4000-8000-000000000001', '22222222-2222-4222-8222-222222222222', 'Ayam', 'ayam', 'Ayam goreng', 1, 'potong', 100, '{}'::jsonb);
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', true);
@@ -51,6 +57,19 @@ select throws_ok($$insert into public.weight_entries(user_id, entry_date, weight
   values ('22222222-2222-4222-8222-222222222222', current_date - 1, 60)$$, '42501', null, 'A cannot insert B weight');
 select lives_ok($$select public.save_profile_with_weight('A', 30, 170, 68, 'pria', 'ringan', 'jaga', 2100, current_date, true)$$, 'A can update current weight atomically');
 select is((select count(*)::integer from public.weight_entries where entry_date = current_date and superseded_at is null), 1, 'same-day weight update keeps one current row');
+
+select is((select count(*)::integer from public.saved_meals), 1, 'A sees only own saved meals');
+select is((select count(*)::integer from public.food_corrections), 1, 'A sees only own corrections');
+select is((select count(*)::integer from public.saved_meals where id = 'bbbbbbbb-3000-4000-8000-000000000001'), 0, 'A cannot read B saved meal');
+select is((select count(*)::integer from public.food_corrections where id = 'bbbbbbbb-4000-4000-8000-000000000001'), 0, 'A cannot read B correction');
+select throws_ok($$insert into public.saved_meals(user_id, title, items)
+  values ('22222222-2222-4222-8222-222222222222', 'Intrusion', '[]'::jsonb)$$, '42501', null, 'A cannot insert B saved meal');
+select throws_ok($$insert into public.food_corrections(user_id, candidate_text, candidate_key, selected_name, quantity, unit, grams, item_snapshot)
+  values ('22222222-2222-4222-8222-222222222222', 'Ayam', 'ayam', 'Intrusion', 1, 'potong', 100, '{}'::jsonb)$$, '42501', null, 'A cannot insert B correction');
+select is((with changed as (update public.saved_meals set title = 'Intrusion' where id = 'bbbbbbbb-3000-4000-8000-000000000001' returning id) select count(*)::integer from changed), 0, 'A cannot update B saved meal');
+select is((with changed as (update public.food_corrections set selected_name = 'Intrusion' where id = 'bbbbbbbb-4000-4000-8000-000000000001' returning id) select count(*)::integer from changed), 0, 'A cannot update B correction');
+select is((with changed as (delete from public.saved_meals where id = 'bbbbbbbb-3000-4000-8000-000000000001' returning id) select count(*)::integer from changed), 0, 'A cannot delete B saved meal');
+select is((with changed as (delete from public.food_corrections where id = 'bbbbbbbb-4000-4000-8000-000000000001' returning id) select count(*)::integer from changed), 0, 'A cannot delete B correction');
 
 select * from finish();
 rollback;
