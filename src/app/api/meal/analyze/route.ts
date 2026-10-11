@@ -4,9 +4,12 @@ import { AnalysisSchema, imageType } from "@/lib/analysis";
 import { verifiedUserId } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
+export const maxDuration = 30;
 
 const counts = new Map<string, { count: number; reset: number }>();
 const DAY = 24 * 60 * 60 * 1000;
+const MAX_IMAGE_BYTES = 4_000_000;
+const MAX_REQUEST_BYTES = 4_400_000;
 function allowed(key: string, limit: number) {
   const now = Date.now();
   const current = counts.get(key);
@@ -17,7 +20,7 @@ function allowed(key: string, limit: number) {
 }
 export async function POST(request: NextRequest) {
   const length = Number(request.headers.get("content-length") || 0);
-  if (length > 6 * 1024 * 1024) return NextResponse.json({ error: "Foto terlalu besar. Kompres atau pilih foto lain." }, { status: 413 });
+  if (length > MAX_REQUEST_BYTES) return NextResponse.json({ error: "Foto terlalu besar setelah dikompresi. Pilih foto lain." }, { status: 413 });
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
   if (!allowed(`ip:${ip}`, 10) || !allowed("global", 200)) return NextResponse.json({ error: "Batas analisis sementara tercapai. Kamu tetap bisa mencatat manual." }, { status: 429 });
   const token = request.headers.get("authorization")?.match(/^Bearer (.+)$/i)?.[1] ?? "";
@@ -32,7 +35,7 @@ export async function POST(request: NextRequest) {
   try { form = await request.formData(); } catch { return NextResponse.json({ error: "Unggahan tidak dapat dibaca." }, { status: 400 }); }
   const image = form.get("image");
   const context = form.get("context");
-  if (!(image instanceof File) || image.size === 0 || image.size > 5 * 1024 * 1024) return NextResponse.json({ error: "Pilih foto di bawah 5 MB." }, { status: 400 });
+  if (!(image instanceof File) || image.size === 0 || image.size > MAX_IMAGE_BYTES) return NextResponse.json({ error: "Foto terkompresi harus di bawah 4 MB. Pilih foto lain." }, { status: 400 });
   if (context && (typeof context !== "string" || context.length > 300)) return NextResponse.json({ error: "Keterangan terlalu panjang." }, { status: 400 });
   const buffer = Buffer.from(await image.arrayBuffer());
   const mimeType = imageType(buffer);

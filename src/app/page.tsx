@@ -225,6 +225,7 @@ export default function HomePage() {
     setAnalyzing(true);
     try {
       const compressed = await compressImage(file);
+      if (compressed.size > 4_000_000) throw new Error("Foto masih terlalu besar setelah dikompresi. Pilih foto lain.");
       const form = new FormData(); form.append("image", compressed); if (answer.trim()) form.append("context", answer.trim());
       const session = await getSupabaseBrowser()?.auth.getSession();
       const accessToken = session?.data.session?.access_token;

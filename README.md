@@ -34,6 +34,8 @@ npm run build
 
 ## Supabase setup
 
+Untuk deployment produksi, ikuti [panduan Supabase dan Vercel](docs/deploy-vercel.md).
+
 No migration was applied to your Supabase project by this work. The PostgreSQL connection string shown in the request has a password placeholder and is neither needed nor used by the app.
 
 1. In the [Supabase Dashboard](https://supabase.com/dashboard), open your project. In **SQL Editor**, create a new query, paste the complete contents of [`supabase/migrations/20261011000100_food_tracker.sql`](supabase/migrations/20261011000100_food_tracker.sql), and run it once on a fresh schema. The migration creates profiles, meals, meal items, saved meals, weight entries, indexes, grants, and owner-only RLS policies.
