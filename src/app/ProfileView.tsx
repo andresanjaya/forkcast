@@ -5,6 +5,7 @@ import { ArrowRight, CircleHelp, Settings2, Trash2, UserRound } from "lucide-rea
 import { getSupabaseBrowser } from "@/lib/supabase/browser";
 import type { Profile } from "@/lib/food";
 import { activeTarget, estimateTarget, profileError, validTarget, type TargetRecord, type TargetSource } from "@/lib/target";
+import PwaUpdates from "./PwaUpdates";
 
 type Props = {
   profile: Profile;
@@ -182,5 +183,6 @@ export default function ProfileView(props: Props) {
       {authNotice && <p className="form-notice" role="status">{authNotice}</p>}{authError && <p className="error-message" role="alert">{authError}</p>}
     </section>
     <section className="panel privacy-panel"><div><span className="card-kicker">DATA & PRIVASI</span><h2>{props.accountId ? "Data akun" : "Mode demo lokal"}</h2><p>{props.accountId ? "Catatan akunmu disimpan di Supabase. Foto tidak disimpan." : "Catatan demo berada di penyimpanan browser perangkat ini. Foto tidak disimpan."}</p><p>Untuk memasang Porsi: di iPhone gunakan Bagikan → Tambahkan ke Layar Utama; di Android pilih Instal aplikasi pada menu browser.</p></div><button className="outline-button danger-text" onClick={props.onRemoveAll}><Trash2 size={17} /> {props.accountId ? "Hapus data akun" : "Hapus semua data"}</button></section>
+    <PwaUpdates />
   </>;
 }
