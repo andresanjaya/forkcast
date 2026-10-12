@@ -9,7 +9,7 @@ type Props = {
   galleryPreview: string;
   photoName: string;
   analysisReady: boolean;
-  onCamera: (file: File | undefined) => void;
+  onCamera: () => void;
   onGallery: (file: File | undefined) => void;
   onAnalyze: () => void;
   onCancel: () => void;
@@ -19,7 +19,7 @@ type Props = {
 export default function PhotoSources(props: Props) {
   return <>
     <div className="photo-sources" aria-label="Sumber foto">
-      <label className="photo-source"><input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" disabled={props.analyzing} onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; props.onCamera(file); }} /><Camera size={22} /><strong>Ambil foto</strong><small>Buka kamera perangkat</small></label>
+      <button type="button" className="photo-source" disabled={props.analyzing} onClick={props.onCamera}><Camera size={22} /><strong>Ambil foto</strong><small>Buka kamera Forkcast</small></button>
       <label className="photo-source"><input type="file" accept="image/jpeg,image/png,image/webp" disabled={props.analyzing} onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; props.onGallery(file); }} /><Upload size={22} /><strong>{props.galleryFile ? "Ganti foto dari galeri" : "Pilih dari galeri"}</strong><small>Gunakan foto yang tersimpan</small></label>
     </div>
     {props.galleryPreview && <div className="gallery-preview">

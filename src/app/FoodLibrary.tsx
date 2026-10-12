@@ -3,17 +3,14 @@
 import FoodPhotoHeader from "@/components/forkcast/FoodPhotoHeader";
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Plus, Search } from "lucide-react";
-import { changeServing, itemFromFood, libraryFoods, nutrientsFor, searchLibraryFoods, type LibraryFood, type MealItem, type MealType } from "@/lib/food";
-import type { FoodShortcut } from "@/lib/meal-memory";
+import { Card } from "@/components/ui/card";
+import { changeServing, itemFromFood, nutrientsFor, searchLibraryFoods, type LibraryFood, type MealItem, type MealType } from "@/lib/food";
 
 type Props = {
   query: string;
   onQuery: (query: string) => void;
   mealType: MealType;
   onMealType: (type: MealType) => void;
-  recent: FoodShortcut[];
-  frequent: FoodShortcut[];
-  signedIn: boolean;
   onAdd: (item: MealItem) => void;
 };
 type Selection = { item: MealItem; food: LibraryFood | null };
@@ -29,10 +26,6 @@ export default function FoodLibrary(props: Props) {
   useEffect(() => { if (selectedId) detailRef.current?.focus(); }, [selectedId]);
 
   function openFood(food: LibraryFood) { setSelected({ food, item: itemFromFood(food) }); }
-  function openRecent(entry: FoodShortcut) {
-    const item = { ...entry.item, id: crypto.randomUUID(), per100g: { ...entry.item.per100g } };
-    setSelected({ item, food: libraryFoods.find((food) => food.id === item.foodId) ?? null });
-  }
   function back() { setSelected(null); window.requestAnimationFrame(() => searchRef.current?.focus()); }
 
   if (selected) {
@@ -61,14 +54,13 @@ export default function FoodLibrary(props: Props) {
   }
 
   return <section className="food-library panel" aria-label="Katalog makanan Indonesia">
-    <span className="card-kicker">KATALOG AWAL</span><h3>Cari makanan Indonesia</h3>
-    <p className="microcopy">Katalog kecil ini tersedia tanpa koneksi. Makanan olahan dan porsi dapat berbeda dari data sumber.</p>
     <label className="food-search-input"><Search size={18} /><span className="sr-only">Cari nama makanan atau nama lain</span><input ref={searchRef} type="search" value={props.query} onChange={(event) => props.onQuery(event.target.value)} placeholder="Cari nasi, tempe, pepaya..." autoComplete="off" /></label>
-    <p className="library-result-count" role="status">{props.query.trim() ? `${results.length} makanan ditemukan` : `${libraryFoods.length} makanan dalam katalog awal`}</p>
-    {!props.query.trim() && <div className="library-shortcuts">
-      <h4>Terakhir dicatat</h4>{props.signedIn ? props.recent.some((entry) => !entry.item.packaged) ? props.recent.filter((entry) => !entry.item.packaged).slice(0, 4).map((entry) => <button type="button" key={entry.key} onClick={() => openRecent(entry)}>{entry.item.name}<small>{number(entry.item.grams)} g terakhir</small></button>) : <p>Belum ada catatan makanan akun.</p> : <p>Masuk ke akun untuk melihat makanan yang terakhir dicatat.</p>}
-      {props.signedIn && props.frequent.some((entry) => !entry.item.packaged) && <><h4>Sering dicatat · 30 hari</h4>{props.frequent.filter((entry) => !entry.item.packaged).slice(0, 4).map((entry) => <button type="button" key={entry.key} onClick={() => openRecent(entry)}>{entry.item.name}<small>{entry.count} kali</small></button>)}</>}
-    </div>}
-    {results.length ? <div className="library-results">{results.map((food) => <button type="button" key={food.id} onClick={() => openFood(food)}><span><strong>{food.name}</strong><small>{food.category} · Estimasi bersumber</small></span><ArrowRight size={17} /></button>)}</div> : <div className="library-empty"><strong>Belum ada yang cocok</strong><p>Coba nama lain atau catat makanan sendiri lewat pencarian manual.</p></div>}
+    <div className="library-list-heading"><h3>{props.query.trim() ? "Hasil pencarian" : "Saran makanan"}</h3><span role="status">{results.length}</span></div>
+    {results.length ? <div className="library-results">{results.map((food) => {
+      const serving = food.servings[0];
+      const servingLabel = serving ? `${serving.approximate ? "≈ " : ""}${serving.unit} · ${number(serving.grams)} g` : "100 g";
+      const calories = serving ? food.per100g.calories * serving.grams / 100 : food.per100g.calories;
+      return <Card className="library-food-card" key={food.id}><button type="button" onClick={() => openFood(food)} aria-label={`Pilih ${food.name}`}><span className="library-food-copy"><strong>{food.name}</strong><small>{number(calories)} kkal · {servingLabel}</small></span><span className="library-food-add" aria-hidden="true"><Plus size={19} /></span></button></Card>;
+    })}</div> : <div className="library-empty"><strong>Belum ada yang cocok</strong><p>Coba nama lain atau pilih Input manual.</p></div>}
   </section>;
 }

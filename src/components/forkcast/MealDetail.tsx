@@ -1,12 +1,36 @@
 "use client";
-import { ArrowLeft, Bookmark, Plus, Trash2 } from "lucide-react";
+
+import { ArrowLeft, Bookmark, Clock3, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import FoodPhotoHeader from "./FoodPhotoHeader";
 import { itemAmountLabel, nutrientsFor, total, type Meal } from "@/lib/food";
+
 const fmt = (value: number | null) => value === null ? "—" : Math.round(value).toLocaleString("id-ID");
-export default function MealDetail({ meal, onBack, onRepeat, onSaveCombination, onDelete }: { meal: Meal; onBack: () => void; onRepeat: () => void; onSaveCombination: () => void; onDelete: () => void }) {
+
+export default function MealDetail({ meal, preview, onBack, onRepeat, onSaveCombination, onDelete }: { meal: Meal; preview?: string; onBack: () => void; onRepeat: () => void; onSaveCombination: () => void; onDelete: () => void }) {
   const nutrition = total(meal.items);
-  return <main className="fc-detail-page"><header className="fc-page-header"><Button variant="ghost" size="icon" onClick={onBack} aria-label="Kembali"><ArrowLeft /></Button><h1>Detail makanan</h1></header><FoodPhotoHeader name={meal.title} /><Card className="fc-detail-card"><Badge variant="secondary">{meal.type} · Estimasi</Badge><h2>{meal.title}</h2><p>{new Date(`${meal.date}T12:00:00`).toLocaleDateString("id-ID", { dateStyle: "long" })}{meal.eatenAt ? ` · ${new Date(meal.eatenAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}` : ""}</p><div className="fc-detail-nutrition"><strong>{fmt(nutrition.calories)} <small>kkal</small></strong><span>{fmt(nutrition.protein)} g<small>Protein</small></span><span>{fmt(nutrition.carbs)} g<small>Karbo</small></span><span>{fmt(nutrition.fat)} g<small>Lemak</small></span></div><h3>Komponen makanan</h3>{meal.items.map((item) => <div className="fc-detail-ingredient" key={item.id}><div><strong>{item.name}</strong><small>{itemAmountLabel(item)}</small><small>{item.source}</small></div><span>{fmt(nutrientsFor(item).calories)} kkal</span></div>)}<p className="fc-footnote">Nilai mengikuti porsi dan sumber yang tersimpan dalam catatan.</p><div className="fc-detail-secondary"><Button variant="outline" onClick={onSaveCombination}><Bookmark /> Simpan kombinasi</Button><Button variant="ghost" onClick={onDelete}><Trash2 /> Hapus</Button></div></Card><footer className="fc-detail-footer"><Button onClick={onRepeat}><Plus /> Catat makanan ini lagi</Button></footer></main>;
+  const eatenAt = meal.eatenAt ? new Date(meal.eatenAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) : null;
+
+  return <main className="fc-scan-detail-page fc-meal-detail-page">
+    <div className="fc-scan-detail-hero fc-meal-detail-hero">
+      <FoodPhotoHeader src={preview ?? meal.photoPreview} name={meal.title} />
+      <div className="fc-scan-detail-shade" />
+      <Button variant="secondary" size="icon" className="fc-scan-detail-back" aria-label="Kembali" onClick={onBack}><ArrowLeft /></Button>
+      <span className="fc-scan-detail-top-title">Detail makanan</span>
+    </div>
+    <Card className="fc-scan-detail-sheet">
+      <div className="fc-scan-detail-scroll">
+        <div className="fc-scan-detail-meta"><span>{meal.type} · {meal.method === "foto" ? "Ditinjau dari foto" : "Catatan makanan"}</span><span><Clock3 size={14} /> {eatenAt ?? new Date(meal.date + "T12:00:00").toLocaleDateString("id-ID", { dateStyle: "medium" })}</span></div>
+        <h1>{meal.title}</h1>
+        <p className="fc-scan-detail-disclaimer">Nilai mengikuti porsi dan sumber yang tersimpan dalam catatan.</p>
+        <Card className="fc-scan-calories"><span>Kalori</span><strong>{fmt(nutrition.calories)} <small>kkal</small></strong></Card>
+        <div className="fc-scan-macros"><Card><small>Protein</small><strong>{fmt(nutrition.protein)} g</strong></Card><Card><small>Karbo</small><strong>{fmt(nutrition.carbs)} g</strong></Card><Card><small>Lemak</small><strong>{fmt(nutrition.fat)} g</strong></Card></div>
+        <div className="fc-scan-ingredients-heading"><div><h2>Komponen makanan</h2><p>{new Date(meal.date + "T12:00:00").toLocaleDateString("id-ID", { dateStyle: "long" })}</p></div><span>{meal.items.length} item</span></div>
+        <div className="fc-meal-detail-ingredients">{meal.items.map((item) => <Card className="fc-meal-detail-ingredient" key={item.id}><div><strong>{item.name}</strong><small>{itemAmountLabel(item)}</small><small>{item.source}</small></div><span>{fmt(nutrientsFor(item).calories)} kkal</span></Card>)}</div>
+        <div className="fc-meal-detail-actions"><Button variant="outline" onClick={onSaveCombination}><Bookmark size={17} /> Simpan kombinasi</Button><Button variant="ghost" onClick={onDelete}><Trash2 size={17} /> Hapus</Button></div>
+      </div>
+      <footer className="fc-scan-detail-footer"><Button onClick={onRepeat}><Plus size={18} /> Catat makanan ini lagi</Button></footer>
+    </Card>
+  </main>;
 }

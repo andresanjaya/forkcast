@@ -8,7 +8,7 @@ import { itemAmountLabel, mealTypes, type MealItem, type MealType, type Optional
 import { normalizeBarcode, packagedItem, type LookupResult, type PackagedProduct, type UserProduct } from "@/lib/packaged-food";
 import type { FoodShortcut } from "@/lib/meal-memory";
 
-type Props = { mealType: MealType; onMealType: (type: MealType) => void; recent: FoodShortcut[]; saved: UserProduct[]; signedIn: boolean; onAdd: (item: MealItem, product: PackagedProduct, remember: boolean) => void };
+type Props = { initialCode?: string | null; onInitialCodeConsumed?: () => void; onOpenCamera: () => void; mealType: MealType; onMealType: (type: MealType) => void; recent: FoodShortcut[]; saved: UserProduct[]; signedIn: boolean; onAdd: (item: MealItem, product: PackagedProduct, remember: boolean) => void };
 type Step = "start" | "scanning" | "loading" | "found" | "incomplete" | "not_found" | "error" | "manual" | "review";
 const show = (value: number | null) => value === null ? "Tidak tersedia" : value.toLocaleString("id-ID", { maximumFractionDigits: 1 });
 const empty = { calories: "", protein: "", carbs: "", fat: "" };
@@ -79,6 +79,11 @@ export default function BarcodeScanner(props: Props) {
       if (!controller.signal.aborted) { setError(reason instanceof Error ? reason.message : "Pencarian gagal."); setStep("error"); }
     } finally { pendingRef.current = false; }
   }
+  useEffect(() => {
+    if (!props.initialCode) return;
+    void lookup(props.initialCode);
+    props.onInitialCodeConsumed?.();
+  }, [props.initialCode, props.onInitialCodeConsumed]);
   const onDecoded = (value: string) => { void lookup(value); };
   const onFailure = (message: string) => { setError(message); setStep("start"); };
   const amountNumber = Number(amount);
@@ -96,7 +101,7 @@ export default function BarcodeScanner(props: Props) {
 
   return <section className="barcode-panel panel" aria-label="Scan produk kemasan">
     <span className="card-kicker">PRODUK KEMASAN</span><h3>Scan barcode</h3>
-    {step === "start" && <><p className="microcopy">Barcode membantu mencari produk. Selalu cocokkan hasil dengan kemasanmu.</p><button className="primary-button barcode-action" type="button" onClick={() => { setError(""); setStep("scanning"); }}><Camera size={17} /> Buka kamera barcode</button><form onSubmit={(event) => { event.preventDefault(); void lookup(codeInput); }}><label className="field">Atau masukkan kode EAN / UPC<input inputMode="numeric" autoComplete="off" value={codeInput} onChange={(event) => setCodeInput(event.target.value)} placeholder="Contoh: 899..." /></label><button className="outline-button barcode-action" type="submit"><Search size={16} /> Cari produk</button></form>{error && <p className="error-message" role="alert">{error}</p>}<button className="text-button" type="button" onClick={() => manualForm()}>Kode tidak terbaca? Isi label kemasan</button>{props.signedIn && (recent.length > 0 || props.saved.length > 0) && <div className="barcode-recent"><h4>Produkmu sebelumnya</h4>{props.saved.slice(0, 4).map((entry) => <button key={entry.id} type="button" onClick={() => openProduct(entry.product, "review")}>{entry.product.name}<small>{entry.product.brand || "Produk tersimpan"}</small></button>)}{recent.map((entry) => <button key={entry.key} type="button" onClick={() => { const snapshot = entry.item.packaged!; openProduct({ ...snapshot, name: entry.item.name.replace(snapshot.brand ? `${snapshot.brand} · ` : "", ""), suggestedAmount: entry.item.grams }, "review"); }}>{entry.item.name}<small>{itemAmountLabel(entry.item)} terakhir</small></button>)}</div>}</>}
+    {step === "start" && <><p className="microcopy">Barcode membantu mencari produk. Selalu cocokkan hasil dengan kemasanmu.</p><button className="primary-button barcode-action" type="button" onClick={() => { setError(""); props.onOpenCamera(); }}><Camera size={17} /> Buka kamera barcode</button><form onSubmit={(event) => { event.preventDefault(); void lookup(codeInput); }}><label className="field">Atau masukkan kode EAN / UPC<input inputMode="numeric" autoComplete="off" value={codeInput} onChange={(event) => setCodeInput(event.target.value)} placeholder="Contoh: 899..." /></label><button className="outline-button barcode-action" type="submit"><Search size={16} /> Cari produk</button></form>{error && <p className="error-message" role="alert">{error}</p>}<button className="text-button" type="button" onClick={() => manualForm()}>Kode tidak terbaca? Isi label kemasan</button>{props.signedIn && (recent.length > 0 || props.saved.length > 0) && <div className="barcode-recent"><h4>Produkmu sebelumnya</h4>{props.saved.slice(0, 4).map((entry) => <button key={entry.id} type="button" onClick={() => openProduct(entry.product, "review")}>{entry.product.name}<small>{entry.product.brand || "Produk tersimpan"}</small></button>)}{recent.map((entry) => <button key={entry.key} type="button" onClick={() => { const snapshot = entry.item.packaged!; openProduct({ ...snapshot, name: entry.item.name.replace(snapshot.brand ? `${snapshot.brand} · ` : "", ""), suggestedAmount: entry.item.grams }, "review"); }}>{entry.item.name}<small>{itemAmountLabel(entry.item)} terakhir</small></button>)}</div>}</>}
     {step === "scanning" && <CameraFrame onDecoded={onDecoded} onFailure={onFailure} onBack={() => setStep("start")} />}
     {step === "loading" && <div className="barcode-state" role="status"><Barcode size={26} /><strong>Kode {code} terbaca</strong><p>Mencari produk…</p></div>}
     {(step === "not_found" || step === "error") && <div className="barcode-state" role="status"><Barcode size={26} /><strong>{step === "not_found" ? "Produk belum ditemukan" : "Pencarian belum tersedia"}</strong><p>{error || `Kode ${code} belum ada di sumber produk.`}</p><button className="primary-button" type="button" onClick={() => manualForm()}>Isi label kemasan</button><button className="text-button" type="button" onClick={() => setStep("start")}>Coba kode lain</button></div>}

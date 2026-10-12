@@ -48,13 +48,16 @@ export async function POST(request: NextRequest) {
   } catch { return NextResponse.json({ error: "Foto tidak dapat diproses. Pilih foto lain." }, { status: 400 }); }
 
   const model = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
+  const labelMode = typeof context === "string" && /label gizi/i.test(context);
   const schema = {
     type: "object", properties: {
       items: { type: "array", minItems: 1, maxItems: 10, items: { type: "object", properties: {
         candidateName: { type: "string" },
         estimatedServing: { type: "object", properties: { value: { type: "number" }, unit: { type: "string" }, gramsMin: { type: "number" }, gramsMax: { type: "number" } }, required: ["value", "unit", "gramsMin", "gramsMax"] },
+        estimatedNutritionPer100g: { type: "object", properties: { calories: { type: "number" }, protein: { type: "number" }, carbs: { type: "number" }, fat: { type: "number" } }, required: ["calories", "protein", "carbs", "fat"] },
+        nutritionConfidence: { type: "string", enum: ["low", "medium", "high"] },
         visibleNotes: { type: "string" }, confidence: { type: "string", enum: ["low", "medium", "high"] }, needsConfirmation: { type: "boolean" },
-      }, required: ["candidateName", "estimatedServing", "visibleNotes", "confidence", "needsConfirmation"] } },
+      }, required: ["candidateName", "estimatedServing", "estimatedNutritionPer100g", "nutritionConfidence", "visibleNotes", "confidence", "needsConfirmation"] } },
       followUpQuestion: { type: "string" }, disclaimer: { type: "string" },
     }, required: ["items", "disclaimer"],
   };
@@ -62,7 +65,7 @@ export async function POST(request: NextRequest) {
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
       method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": process.env.GEMINI_API_KEY },
       body: JSON.stringify({ contents: [{ parts: [
-        { text: `Identify only foods or visible components in this meal image. Respond in Indonesian. Use approximate serving ranges in grams. Mark ambiguous foods with low confidence. Hidden oil, sauces or ingredients are unknown unless visible or supplied by the user. Never estimate calories, give medical advice, or claim measured precision. Optional user context: ${typeof context === "string" ? context : "none"}` },
+        { text: `${labelMode ? "Read the visible nutrition facts label and product name. When serving size and nutrient values are legible, convert the values to an estimated per-100-g basis; if the basis is unclear, keep confidence low and explain what is unclear in visibleNotes. Do not invent unreadable values." : "Identify only foods or visible components in this meal image. Estimate approximate nutrition per 100 g of edible food."} Respond in Indonesian. Use approximate serving ranges in grams. Mark ambiguous foods with low confidence. Hidden oil, sauces or ingredients are unknown unless visible or supplied by the user. Use typical preparation only when supported by the image; hidden oil, sauces, and ingredients are unknown. Keep estimates conservative, round to sensible values, mark nutrition confidence low when uncertain, and present values as editable suggestions rather than verified facts. Do not give medical advice or claim measured precision. Optional user context: ${typeof context === "string" ? context : "none"}` },
         { inlineData: { mimeType: "image/jpeg", data: compressed.toString("base64") } },
       ] }], generationConfig: { responseMimeType: "application/json", responseSchema: schema } }),
       signal: AbortSignal.timeout(20000),

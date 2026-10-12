@@ -8,6 +8,13 @@ export const CandidateSchema = z.object({
     gramsMin: z.number().positive().max(3000),
     gramsMax: z.number().positive().max(3000),
   }).strict().refine((serving) => serving.gramsMax >= serving.gramsMin, "Serving range is reversed"),
+  estimatedNutritionPer100g: z.object({
+    calories: z.number().min(0).max(900),
+    protein: z.number().min(0).max(100),
+    carbs: z.number().min(0).max(100),
+    fat: z.number().min(0).max(100),
+  }).strict(),
+  nutritionConfidence: z.enum(["low", "medium", "high"]),
   visibleNotes: z.string().max(240),
   confidence: z.enum(["low", "medium", "high"]),
   needsConfirmation: z.boolean(),

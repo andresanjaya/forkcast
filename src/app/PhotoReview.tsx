@@ -7,11 +7,14 @@ import { itemAmountLabel, nutrientsFor, total, type MealItem, type SavedMeal } f
 import { findPersonalMatch, type FoodCorrection } from "@/lib/meal-memory";
 import { photoReviewState, validPhotoItem } from "@/lib/photo-review";
 import PhotoFoodSearch from "./PhotoFoodSearch";
+import SwipeDeleteRow from "@/components/forkcast/SwipeDeleteRow";
 
 export type Analysis = {
   items: {
     candidateName: string;
     estimatedServing: { value: number; unit: string; gramsMin: number; gramsMax: number };
+    estimatedNutritionPer100g: { calories: number; protein: number; carbs: number; fat: number };
+    nutritionConfidence: "low" | "medium" | "high";
     visibleNotes: string;
     confidence: string;
     needsConfirmation: boolean;
@@ -21,7 +24,7 @@ export type Analysis = {
   demo: boolean;
 };
 
-type Props = {
+export type PhotoReviewProps = {
   analysis: Analysis;
   draft: MealItem[];
   corrections: FoodCorrection[];
@@ -30,12 +33,14 @@ type Props = {
   extras: Record<number, string[]>;
   aliases: Record<number, string>;
   ignored: number[];
+  removedCandidates: number[];
   confirmed: boolean;
   answer: string;
   photoFile: File | null;
   analyzing: boolean;
   onFood: (index: number | null, item: MealItem) => void;
   onToggle: (index: number, included: boolean) => void;
+  onDeleteCandidate: (index: number) => void;
   onPortion: (index: number, grams: number) => void;
   onAlias: (index: number, alias: string) => void;
   onCorrection: (index: number, correction: FoodCorrection) => void;
@@ -45,7 +50,7 @@ type Props = {
   onConfirm: (confirmed: boolean) => void;
 };
 
-export default function PhotoReview(props: Props) {
+export default function PhotoReview(props: PhotoReviewProps) {
   const [searchTarget, setSearchTarget] = useState<number | "extra" | null>(null);
   const [manualFirst, setManualFirst] = useState(false);
   const review = photoReviewState(props.analysis.items.length, props.selections, props.ignored, props.draft, props.extras);
@@ -55,11 +60,11 @@ export default function PhotoReview(props: Props) {
   return <div className="analysis-result">
     <div className="analysis-label"><Sparkles size={17} /> KANDIDAT DARI FOTO</div>
     <p>{props.analysis.disclaimer}</p>
-    {props.analysis.items.map((candidate, index) => {
+    {props.analysis.items.map((candidate, index) => ({ candidate, index })).filter(({ index }) => !props.removedCandidates.includes(index)).map(({ candidate, index }) => {
       const match = findPersonalMatch(candidate.candidateName, props.corrections, props.savedMeals);
       const selected = props.draft.find((item) => item.id === props.selections[index]);
       const ignored = props.ignored.includes(index);
-      return <div className={`candidate review-candidate${ignored ? " is-ignored" : ""}`} key={`${candidate.candidateName}-${index}`}>
+      return <SwipeDeleteRow className="fc-scan-ingredient-swipe" key={`${candidate.candidateName}-${index}`} label={`Hapus ${candidate.candidateName}`} onDelete={() => props.onDeleteCandidate(index)}><div className={`candidate review-candidate${ignored ? " is-ignored" : ""}`}>
         <div className="candidate-top"><strong>{candidate.candidateName}</strong><span className={`candidate-status ${ignored ? "excluded" : selected && validPhotoItem(selected) ? "included" : "pending"}`}>{ignored ? "Tidak dihitung" : selected ? validPhotoItem(selected) ? "Masuk total" : "Periksa porsi" : "Belum dipadankan"}</span></div>
         <span>{candidate.estimatedServing.gramsMin}–{candidate.estimatedServing.gramsMax} g · keyakinan {candidate.confidence === "high" ? "tinggi" : candidate.confidence === "low" ? "rendah" : "sedang"}</span>
         <small>{candidate.visibleNotes}</small>
@@ -72,7 +77,7 @@ export default function PhotoReview(props: Props) {
         {match && !ignored && <div className="personal-match"><span>Dari riwayatmu: {match.kind === "correction" ? `terakhir kamu catat sebagai ${match.correction.item.name} (${itemAmountLabel(match.correction.item)})` : `kombinasi “${match.saved.title}”`}. Periksa lagi sebelum menyimpan.</span><button className="text-button" onClick={() => match.kind === "correction" ? props.onCorrection(index, match.correction) : props.onSaved(index, match.saved)}>Gunakan pilihan ini <ArrowRight size={14} /></button></div>}
         {selected && !ignored && <label className="candidate-select">Nama panggilan untuk lain kali (opsional)<input maxLength={100} value={props.aliases[index] ?? ""} onChange={(event) => props.onAlias(index, event.target.value)} placeholder="Contoh: ayam rumah" /></label>}
         {ignored && <p className="candidate-ignored-note">Item ini tetap terlihat untuk ditinjau, tetapi tidak masuk catatan atau total nutrisi.</p>}
-      </div>;
+      </div></SwipeDeleteRow>;
     })}
     <button type="button" className="add-food-button review-add-component" onClick={() => openSearch("extra")}><Plus size={17} /> Tambah komponen yang terlewat</button>
     <p className="review-component-hint">Misalnya kuah sop, timun, tomat, atau pelengkap lain. Setelah ditambahkan, sesuaikan porsinya di daftar makanan.</p>
@@ -84,7 +89,7 @@ export default function PhotoReview(props: Props) {
       {review.invalid.length > 0 && <div className="summary-warning"><strong>Perlu perbaikan porsi atau nutrisi:</strong> {review.invalid.map((item) => item.name).join(", ")}. Item ini belum masuk total.</div>}
       {props.ignored.length > 0 && <div className="summary-excluded"><strong>Tidak dihitung:</strong> {props.ignored.map((index) => props.analysis.items[index]?.candidateName).filter(Boolean).join(", ")}. Item ini tidak akan disimpan.</div>}
     </div>
-    <Sheet open={searchTarget !== null} onOpenChange={(open) => { if (!open) setSearchTarget(null); }}><SheetContent side="bottom" className="fc-search-sheet"><SheetHeader><SheetTitle>{manualFirst ? "Input makanan manual" : "Pilih padanan makanan"}</SheetTitle><SheetDescription>Cari padanan, periksa porsi, atau isi nilai gizi sendiri.</SheetDescription></SheetHeader>{searchTarget !== null && <PhotoFoodSearch key={`${searchTarget}-${manualFirst}`} candidateName={typeof searchTarget === "number" ? props.analysis.items[searchTarget].candidateName : ""} estimatedGrams={typeof searchTarget === "number" ? Math.max(1, Math.round((props.analysis.items[searchTarget].estimatedServing.gramsMin + props.analysis.items[searchTarget].estimatedServing.gramsMax) / 2)) : undefined} manualFirst={manualFirst} onFood={(item) => addFood(typeof searchTarget === "number" ? searchTarget : null, item)} onClose={() => setSearchTarget(null)} />}</SheetContent></Sheet>
+    <Sheet open={searchTarget !== null} onOpenChange={(open) => { if (!open) setSearchTarget(null); }}><SheetContent side="bottom" className="fc-search-sheet"><SheetHeader><SheetTitle>{manualFirst ? "Input makanan manual" : "Pilih padanan makanan"}</SheetTitle><SheetDescription>Cari padanan, periksa porsi, atau isi nilai gizi sendiri.</SheetDescription></SheetHeader>{searchTarget !== null && <PhotoFoodSearch key={`${searchTarget}-${manualFirst}`} candidateName={typeof searchTarget === "number" ? props.analysis.items[searchTarget].candidateName : ""} estimatedGrams={typeof searchTarget === "number" ? Math.max(1, Math.round((props.analysis.items[searchTarget].estimatedServing.gramsMin + props.analysis.items[searchTarget].estimatedServing.gramsMax) / 2)) : undefined} estimatedNutritionPer100g={typeof searchTarget === "number" ? props.analysis.items[searchTarget].estimatedNutritionPer100g : undefined} nutritionConfidence={typeof searchTarget === "number" ? props.analysis.items[searchTarget].nutritionConfidence : undefined} manualFirst={manualFirst} onFood={(item) => addFood(typeof searchTarget === "number" ? searchTarget : null, item)} onClose={() => setSearchTarget(null)} />}</SheetContent></Sheet>
     <label className="review-confirm"><input type="checkbox" checked={props.confirmed} disabled={review.unresolved.length > 0 || review.invalid.length > 0 || review.included.length === 0} onChange={(event) => props.onConfirm(event.target.checked)} /> Saya sudah memeriksa item yang masuk perhitungan, padanan nutrisi, dan porsinya.</label>
   </div>;
 }

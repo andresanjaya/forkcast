@@ -1,25 +1,30 @@
 "use client";
 
 import { BicepsFlexed, Camera, ChevronLeft, ChevronRight, Droplet, Leaf, Plus, UtensilsCrossed, Wheat } from "lucide-react";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { total, itemAmountLabel, mealTypes, type Meal, type MealType, type Profile } from "@/lib/food";
 import { addCalendarDays, mondayOf } from "@/lib/weekly-progress";
+import RecentScanCard from "./RecentScanCard";
 
 const number = (value: number | null) => value === null ? "—" : Math.round(value).toLocaleString("id-ID");
 const localDate = (date: string) => new Date(`${date}T12:00:00`);
-type Props = { date: string; today: string; profile: Profile; target: number; meals: Meal[]; account: boolean; onDate: (date: string) => void; onAdd: (type?: MealType) => void; onPhoto: () => void; onHistory: () => void; onMeal: (meal: Meal) => void };
+type Props = { date: string; today: string; profile: Profile; target: number; meals: Meal[]; account: boolean; scan?: { status: "processing" | "ready" | "error"; preview: string; fileName: string; itemCount: number; onOpen: () => void; onRetry: () => void; onDismiss: () => void }; onDate: (date: string) => void; onAdd: (type?: MealType) => void; onPhoto: () => void; onHistory: () => void; onMeal: (meal: Meal) => void };
 
 export function MealEntry({ meal, onClick }: { meal: Meal; onClick: () => void }) {
-  return <button className="fc-meal-entry" onClick={onClick}>
-    <span className="fc-food-thumb" aria-hidden="true"><UtensilsCrossed size={23} /></span>
-    <span className="fc-meal-text"><strong>{meal.title}</strong><small>{meal.eatenAt ? new Date(meal.eatenAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) : meal.type} · {meal.items.length === 1 ? itemAmountLabel(meal.items[0]) : `${meal.items.length} komponen`}</small><small>{meal.method === "foto" ? "Dari foto · ditinjau" : meal.method === "tersimpan" ? "Makanan tersimpan" : "Dicatat manual"}</small></span>
-    <span className="fc-meal-calories">{number(total(meal.items).calories)}<small>kkal</small></span>
-  </button>;
+  const amount = meal.items.length === 1 ? itemAmountLabel(meal.items[0]) : String(meal.items.length) + " komponen";
+  const time = meal.eatenAt ? new Date(meal.eatenAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) : meal.type;
+  return <Card className="fc-meal-entry-card">
+    <button className="fc-meal-entry" type="button" onClick={onClick}>
+      <span className="fc-meal-entry-image" aria-hidden="true">{meal.photoPreview ? <Image src={meal.photoPreview} alt="" fill sizes="56px" unoptimized /> : <UtensilsCrossed size={22} />}</span>
+      <span className="fc-meal-text"><strong>{meal.title}</strong><small>{time} · {amount}</small><small>{meal.method === "foto" ? "Dari foto · ditinjau" : meal.method === "tersimpan" ? "Makanan tersimpan" : "Dicatat manual"}</small></span>
+      <span className="fc-meal-calories">{number(total(meal.items).calories)}<small>kkal</small></span>
+    </button>
+  </Card>;
 }
-
 export default function HomeDashboard(props: Props) {
   const nutrition = props.meals.length ? total(props.meals.flatMap((meal) => meal.items)) : { calories: null, protein: null, carbs: null, fat: null };
   const percent = nutrition.calories === null ? 0 : Math.min(100, nutrition.calories / Math.max(1, props.target) * 100);
@@ -40,6 +45,7 @@ export default function HomeDashboard(props: Props) {
     {!props.meals.length && <Card className="fc-empty"><UtensilsCrossed size={28} /><h3>Belum ada catatan</h3><p>Mulai dari satu makanan. Hari tanpa catatan belum menggambarkan asupanmu.</p><Button onClick={() => props.onAdd()}><Plus size={17} /> Catat makanan</Button></Card>}
     {mealTypes.map((type) => { const entries = props.meals.filter((meal) => meal.type === type); return <section className="fc-meal-group" key={type}><div><h3>{type}</h3><Button variant="ghost" size="icon" aria-label={`Tambah ${type.toLowerCase()}`} onClick={() => props.onAdd(type)}><Plus size={17} /></Button></div>{entries.map((meal) => <MealEntry meal={meal} key={meal.id} onClick={() => props.onMeal(meal)} />)}{!entries.length && <p>Belum ada catatan</p>}</section>; })}
     <Card className="fc-scan-prompt"><span><Camera size={24} /></span><div><h3>Mulai dari sebuah foto</h3><p>Kenali makanan, lalu tinjau estimasinya.</p></div><Button variant="ghost" size="icon" aria-label="Analisis foto makanan" onClick={props.onPhoto}><ChevronRight /></Button></Card>
+    {props.scan && <section className="fc-recent-scan-section"><div className="fc-section-title"><h2>Recently uploaded</h2><Badge variant="secondary">Foto</Badge></div><RecentScanCard {...props.scan} /></section>}
     <p className="fc-footnote">Nilai gizi merupakan estimasi. {props.account ? "Catatan tersimpan di akunmu." : "Mode demo menyimpan catatan di perangkat ini."}</p>
   </div>;
 }

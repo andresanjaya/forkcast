@@ -4,16 +4,16 @@ import { useState } from "react";
 import { Plus, Search } from "lucide-react";
 import { itemFromFood, searchPhotoFoods, type Food, type MealItem } from "@/lib/food";
 
-type Props = { candidateName?: string; estimatedGrams?: number; manualFirst?: boolean; onFood: (item: MealItem) => void; onClose: () => void };
+type Props = { candidateName?: string; estimatedGrams?: number; estimatedNutritionPer100g?: { calories: number; protein: number; carbs: number; fat: number }; nutritionConfidence?: "low" | "medium" | "high"; manualFirst?: boolean; onFood: (item: MealItem) => void; onClose: () => void };
 type NutrientKey = "calories" | "protein" | "carbs" | "fat";
 const nutrientLabels: Record<NutrientKey, string> = { calories: "Kalori", protein: "Protein (g)", carbs: "Karbo (g)", fat: "Lemak (g)" };
 
-export default function PhotoFoodSearch({ candidateName = "", estimatedGrams = 100, manualFirst = false, onFood, onClose }: Props) {
+export default function PhotoFoodSearch({ candidateName = "", estimatedGrams = 100, estimatedNutritionPer100g, nutritionConfidence, manualFirst = false, onFood, onClose }: Props) {
   const [query, setQuery] = useState(candidateName);
   const [manualOpen, setManualOpen] = useState(manualFirst);
   const [name, setName] = useState(candidateName);
   const [grams, setGrams] = useState(String(estimatedGrams));
-  const [values, setValues] = useState<Record<NutrientKey, string>>({ calories: "", protein: "", carbs: "", fat: "" });
+  const [values, setValues] = useState<Record<NutrientKey, string>>(() => estimatedNutritionPer100g ? { calories: String(estimatedNutritionPer100g.calories), protein: String(estimatedNutritionPer100g.protein), carbs: String(estimatedNutritionPer100g.carbs), fat: String(estimatedNutritionPer100g.fat) } : { calories: "", protein: "", carbs: "", fat: "" });
   const [error, setError] = useState("");
   const results = searchPhotoFoods(query);
 
@@ -32,13 +32,13 @@ export default function PhotoFoodSearch({ candidateName = "", estimatedGrams = 1
       setError("Isi nama, porsi, dan semua nilai gizi per 100 g dengan angka yang valid.");
       return;
     }
-    onFood({ id: crypto.randomUUID(), foodId: null, name: name.trim(), quantity: amount, unit: "gram", gramsPerUnit: 1, grams: amount, per100g: nutrients, source: "Diisi pengguna dari tinjau foto", corrected: true });
+    onFood({ id: crypto.randomUUID(), foodId: null, name: name.trim(), quantity: amount, unit: "gram", gramsPerUnit: 1, grams: amount, per100g: nutrients, source: estimatedNutritionPer100g ? "Saran gizi AI dari foto; diperiksa pengguna" : "Diisi pengguna dari tinjau foto", corrected: true });
   }
 
   return <div className="candidate-search">
     <div className="candidate-search-head"><strong>{candidateName ? `Cari padanan untuk ${candidateName}` : "Tambah makanan yang terlewat"}</strong><button type="button" className="text-button" onClick={onClose}>Tutup</button></div>
     {manualOpen ? <div className="candidate-manual">
-      <p>Isi nilai gizi per 100 g dari label atau sumber yang kamu percaya.</p>
+      <p>Nilai gizi per 100 g. Saran AI dari foto adalah perkiraan dan bisa kamu ubah.</p>{estimatedNutritionPer100g && <p className="microcopy">Keyakinan saran AI: {nutritionConfidence === "high" ? "tinggi" : nutritionConfidence === "low" ? "rendah" : "sedang"}.</p>}
       <label className="field">Nama makanan<input value={name} onChange={(event) => setName(event.target.value)} /></label>
       <label className="field">Porsi yang dimakan (g)<input type="number" min="1" max="10000" value={grams} onChange={(event) => setGrams(event.target.value)} /></label>
       <div className="custom-grid">{(Object.keys(nutrientLabels) as NutrientKey[]).map((key) => <label className="field" key={key}>{nutrientLabels[key]}<input type="number" min="0" step="any" value={values[key]} onChange={(event) => setValues({ ...values, [key]: event.target.value })} /></label>)}</div>
