@@ -16,14 +16,14 @@ export function normalizeFoodKey(value: string): string {
 }
 
 export function copyMealItems(items: MealItem[]): MealItem[] {
-  return items.map((item) => ({ ...item, id: crypto.randomUUID(), per100g: { ...item.per100g } }));
+  return items.map((item) => ({ ...item, id: crypto.randomUUID(), per100g: { ...item.per100g }, packaged: item.packaged ? { ...item.packaged, basis: { ...item.packaged.basis }, nutrients: { ...item.packaged.nutrients } } : undefined }));
 }
 
 export function savedMealError(title: string, note: string, items: MealItem[]): string | null {
   if (!title.trim() || title.trim().length > 160) return "Nama kombinasi harus 1–160 karakter.";
   if (note.trim().length > 300) return "Catatan maksimal 300 karakter.";
   if (!items.length || items.length > 30) return "Kombinasi harus berisi 1–30 makanan.";
-  if (items.some((item) => !item.name.trim() || item.name.trim().length > 160 || !Number.isFinite(item.quantity) || item.quantity <= 0 || !Number.isFinite(item.grams) || item.grams <= 0 || item.grams > 10000 || Object.values(item.per100g).some((value) => !Number.isFinite(value) || value < 0))) return "Periksa nama, porsi, dan nilai gizi setiap makanan.";
+  if (items.some((item) => !item.name.trim() || item.name.trim().length > 160 || !Number.isFinite(item.quantity) || item.quantity <= 0 || !Number.isFinite(item.grams) || item.grams <= 0 || item.grams > 10000 || (item.packaged ? !Number.isFinite(item.packaged.basis.amount) || item.packaged.basis.amount <= 0 || Object.values(item.packaged.nutrients).some((value) => value !== null && (!Number.isFinite(value) || value < 0)) : Object.values(item.per100g).some((value) => !Number.isFinite(value) || value < 0)))) return "Periksa nama, porsi, dan nilai gizi setiap makanan.";
   return null;
 }
 

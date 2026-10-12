@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { changeServing, editMealItem, foods, itemFromFood, matchCandidateFood, nutrientsFor, total } from "../src/lib/food.ts";
+import { changeServing, editMealItem, foods, itemFromFood, libraryFoods, matchCandidateFood, normalizeFoodSearch, nutrientsFor, searchLibraryFoods, total } from "../src/lib/food.ts";
 import { estimateTarget } from "../src/lib/target.ts";
 
 test("nutrition uses the stored snapshot and selected gram amount", () => {
@@ -42,4 +42,28 @@ test("AI candidates match only explicit food names or Indonesian aliases", () =>
   assert.equal(matchCandidateFood("AYAM PANGGANG")?.id, "ayam-bakar");
   assert.equal(matchCandidateFood("nasi putih")?.id, "nasi");
   assert.equal(matchCandidateFood("nasi campur"), null);
+});
+
+test("library search finds aliases and partial names, ranks exact matches, and avoids duplicate rows", () => {
+  assert.equal(normalizeFoodSearch("  PÉ  PA  YA "), "pe pa ya");
+  assert.equal(searchLibraryFoods("  NASI  ")[0].id, "lib-nasi-putih");
+  assert.equal(searchLibraryFoods("  PÉPAYA  ")[0].id, "lib-pepaya");
+  assert.equal(searchLibraryFoods("telur")[0].id, "lib-telur-rebus");
+  const results = searchLibraryFoods("tempe");
+  assert.equal(results[0].id, "lib-tempe-matang");
+  assert.equal(new Set(results.map((food) => food.id)).size, results.length);
+  assert.deepEqual(searchLibraryFoods("makanan yang tidak ada"), []);
+});
+
+test("library servings recalculate from sourced per-100-g snapshots", () => {
+  const egg = libraryFoods.find((food) => food.id === "lib-telur-rebus");
+  assert.ok(egg?.sourceReference.startsWith("https://www.ars.usda.gov/"));
+  const oneEgg = itemFromFood(egg);
+  assert.equal(oneEgg.grams, 50);
+  assert.equal(nutrientsFor(oneEgg).calories, 77.5);
+  const asGrams = changeServing(oneEgg, "gram");
+  assert.equal(asGrams.quantity, 50);
+  const twoEggs = { ...oneEgg, quantity: 2, grams: 100 };
+  assert.equal(nutrientsFor(twoEggs).protein, 12.58);
+  assert.equal(oneEgg.grams, 50);
 });

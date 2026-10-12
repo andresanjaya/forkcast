@@ -15,7 +15,7 @@ type Props = {
   onSave: () => void;
   onCancel: () => void;
 };
-const number = (value: number) => Math.round(value).toLocaleString("id-ID");
+const number = (value: number | null) => value === null ? "—" : Math.round(value).toLocaleString("id-ID");
 
 export default function SavedMealForm(props: Props) {
   const nutrition = total(props.items);

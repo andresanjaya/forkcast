@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ArrowRight, Bookmark, Pencil, Plus, Search, Trash2 } from "lucide-react";
-import { total, type Meal, type MealItem, type SavedMeal } from "@/lib/food";
+import { itemAmountLabel, total, type Meal, type MealItem, type SavedMeal } from "@/lib/food";
 import { normalizeFoodKey, type FoodShortcut } from "@/lib/meal-memory";
 
 type Props = {
@@ -18,7 +18,7 @@ type Props = {
   onUseRecentMeal: (meal: Meal) => void;
   onUseFood: (item: MealItem) => void;
 };
-const number = (value: number) => Math.round(value).toLocaleString("id-ID");
+const number = (value: number | null) => value === null ? "—" : Math.round(value).toLocaleString("id-ID");
 
 export default function SavedMealLibrary(props: Props) {
   const [query, setQuery] = useState("");
@@ -32,9 +32,9 @@ export default function SavedMealLibrary(props: Props) {
     </div>) : <p className="empty-inline">{query ? "Tidak ada kombinasi yang cocok." : "Belum ada kombinasi tersimpan. Buat dari makanan yang kamu pilih atau dari riwayat."}</p>}
 
     <h3>Makanan terakhir</h3>
-    {props.recentFoods.length ? <div className="memory-shortcut-list">{props.recentFoods.map((entry) => <button key={entry.key} onClick={() => props.onUseFood(entry.item)}><span><strong>{entry.item.name}</strong><small>{number(entry.item.grams)} g · porsi terakhir</small></span><Plus size={16} /></button>)}</div> : <p className="empty-inline">Belum ada makanan terakhir.</p>}
+    {props.recentFoods.length ? <div className="memory-shortcut-list">{props.recentFoods.map((entry) => <button key={entry.key} onClick={() => props.onUseFood(entry.item)}><span><strong>{entry.item.name}</strong><small>{itemAmountLabel(entry.item)} · porsi terakhir</small></span><Plus size={16} /></button>)}</div> : <p className="empty-inline">Belum ada makanan terakhir.</p>}
     <h3>Sering dicatat · 30 hari</h3>
-    {props.frequentFoods.length ? <div className="memory-shortcut-list">{props.frequentFoods.map((entry) => <button key={entry.key} onClick={() => props.onUseFood(entry.item)}><span><strong>{entry.item.name}</strong><small>{entry.count} kali · porsi terakhir {number(entry.item.grams)} g</small></span><Plus size={16} /></button>)}</div> : <p className="empty-inline">Belum ada makanan berulang dalam 30 hari terakhir.</p>}
+    {props.frequentFoods.length ? <div className="memory-shortcut-list">{props.frequentFoods.map((entry) => <button key={entry.key} onClick={() => props.onUseFood(entry.item)}><span><strong>{entry.item.name}</strong><small>{entry.count} kali · porsi terakhir {itemAmountLabel(entry.item)}</small></span><Plus size={16} /></button>)}</div> : <p className="empty-inline">Belum ada makanan berulang dalam 30 hari terakhir.</p>}
     <h3>Catatan makan terakhir</h3>
     {props.recentMeals.length ? props.recentMeals.map((meal) => <button className="saved-row" key={meal.id} onClick={() => props.onUseRecentMeal(meal)}><span><strong>{meal.title}</strong><small>{meal.date} · {number(total(meal.items).calories)} kkal</small></span><ArrowRight size={17} /></button>) : <p className="empty-inline">Belum ada catatan makan.</p>}
     <p className="microcopy"><Bookmark size={13} /> Pintasan berasal dari catatanmu sendiri. Memilihnya membuka editor; belum ada yang dicatat otomatis.</p>

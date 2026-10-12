@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowRight, Sparkles } from "lucide-react";
-import type { MealItem, SavedMeal } from "@/lib/food";
+import { itemAmountLabel, type MealItem, type SavedMeal } from "@/lib/food";
 import { findPersonalMatch, type FoodCorrection } from "@/lib/meal-memory";
 
 export type Analysis = {
@@ -52,7 +52,7 @@ export default function PhotoReview(props: Props) {
         <strong>{candidate.candidateName}</strong>
         <span>{candidate.estimatedServing.gramsMin}–{candidate.estimatedServing.gramsMax} g · keyakinan {candidate.confidence === "high" ? "tinggi" : candidate.confidence === "low" ? "rendah" : "sedang"}</span>
         <small>{candidate.visibleNotes}</small>
-        {match && <div className="personal-match"><span>Dari riwayatmu: {match.kind === "correction" ? `terakhir kamu catat sebagai ${match.correction.item.name} (${Math.round(match.correction.item.grams)} g)` : `kombinasi “${match.saved.title}”`}. Periksa lagi sebelum menyimpan.</span><button className="text-button" onClick={() => match.kind === "correction" ? props.onCorrection(index, match.correction) : props.onSaved(index, match.saved)}>Gunakan pilihan ini <ArrowRight size={14} /></button></div>}
+        {match && <div className="personal-match"><span>Dari riwayatmu: {match.kind === "correction" ? `terakhir kamu catat sebagai ${match.correction.item.name} (${itemAmountLabel(match.correction.item)})` : `kombinasi “${match.saved.title}”`}. Periksa lagi sebelum menyimpan.</span><button className="text-button" onClick={() => match.kind === "correction" ? props.onCorrection(index, match.correction) : props.onSaved(index, match.saved)}>Gunakan pilihan ini <ArrowRight size={14} /></button></div>}
         <label className="candidate-select">Makanan yang kamu pilih
           <select value={props.selections[index] ?? ""} onChange={(event) => props.onSelect(index, event.target.value)}>
             <option value="">Belum dipilih</option>

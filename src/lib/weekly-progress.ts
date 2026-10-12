@@ -1,4 +1,4 @@
-import type { Meal, Nutrients, WeightEntry } from "./food";
+import { nutrientsFor, type Meal, type Nutrients, type WeightEntry } from "./food.ts";
 import type { TargetRecord } from "./target";
 
 export const WEEKLY_TIME_ZONE = "Asia/Makassar";
@@ -82,9 +82,9 @@ function targetOnDate(date: string, targets: TargetRecord[]): number | null {
 }
 
 function nutrient(item: Meal["items"][number], key: keyof Nutrients): number | null {
-  const value = item.per100g?.[key];
-  if (!Number.isFinite(item.grams) || item.grams < 0 || !Number.isFinite(value) || value === undefined || value < 0) return null;
-  return value * item.grams / 100;
+  const value = nutrientsFor(item)[key];
+  if (!Number.isFinite(item.grams) || item.grams < 0 || !Number.isFinite(value) || value === null || value < 0) return null;
+  return value;
 }
 
 function sumValid(items: Meal["items"], key: keyof Nutrients): number | null {

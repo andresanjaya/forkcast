@@ -3,7 +3,7 @@
 -- the authenticated API role, including attempts to attach an item to another meal.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(26);
+select plan(30);
 
 insert into auth.users (id, email) values
   ('11111111-1111-4111-8111-111111111111', 'porsi-a@example.invalid'),
@@ -30,6 +30,9 @@ insert into public.saved_meals (id, user_id, title, items) values
 insert into public.food_corrections (id, user_id, candidate_text, candidate_key, selected_name, quantity, unit, grams, item_snapshot) values
   ('aaaaaaaa-4000-4000-8000-000000000001', '11111111-1111-4111-8111-111111111111', 'Ayam', 'ayam', 'Ayam bakar', 1, 'potong', 100, '{}'::jsonb),
   ('bbbbbbbb-4000-4000-8000-000000000001', '22222222-2222-4222-8222-222222222222', 'Ayam', 'ayam', 'Ayam goreng', 1, 'potong', 100, '{}'::jsonb);
+insert into public.user_products (id, user_id, barcode, product_snapshot) values
+  ('aaaaaaaa-5000-4000-8000-000000000001', '11111111-1111-4111-8111-111111111111', '3017620422003', '{"name":"Produk A"}'::jsonb),
+  ('bbbbbbbb-5000-4000-8000-000000000001', '22222222-2222-4222-8222-222222222222', '3017620422003', '{"name":"Produk B"}'::jsonb);
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', true);
@@ -60,6 +63,11 @@ select is((select count(*)::integer from public.weight_entries where entry_date 
 
 select is((select count(*)::integer from public.saved_meals), 1, 'A sees only own saved meals');
 select is((select count(*)::integer from public.food_corrections), 1, 'A sees only own corrections');
+select is((select count(*)::integer from public.user_products), 1, 'A sees only own private products');
+select is((select count(*)::integer from public.user_products where id = 'bbbbbbbb-5000-4000-8000-000000000001'), 0, 'A cannot read B product');
+select throws_ok($$insert into public.user_products(user_id, barcode, product_snapshot)
+  values ('22222222-2222-4222-8222-222222222222', '036000291452', '{}'::jsonb)$$, '42501', null, 'A cannot insert B product');
+select is((with changed as (delete from public.user_products where id = 'bbbbbbbb-5000-4000-8000-000000000001' returning id) select count(*)::integer from changed), 0, 'A cannot delete B product');
 select is((select count(*)::integer from public.saved_meals where id = 'bbbbbbbb-3000-4000-8000-000000000001'), 0, 'A cannot read B saved meal');
 select is((select count(*)::integer from public.food_corrections where id = 'bbbbbbbb-4000-4000-8000-000000000001'), 0, 'A cannot read B correction');
 select throws_ok($$insert into public.saved_meals(user_id, title, items)

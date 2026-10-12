@@ -1,28 +1,33 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { defaultProfile, type Meal, type MealItem, type Profile, type SavedMeal, type WeightEntry } from "@/lib/food";
 import type { TargetRecord } from "@/lib/target";
+import type { PackagedProduct, UserProduct } from "@/lib/packaged-food";
 import { savedMealError, type FoodCorrection } from "@/lib/meal-memory";
 
 type Row = Record<string, unknown>;
 const numeric = (value: unknown) => Number(value ?? 0);
+const optionalTableMissing = (error: { code?: string } | null) => error?.code === "42P01" || error?.code === "PGRST205";
 const mealItemFromRow = (row: Row): MealItem => ({
   id: String(row.id), foodId: row.food_id ? String(row.food_id) : null,
   name: String(row.name_snapshot), quantity: numeric(row.quantity), unit: String(row.unit),
   gramsPerUnit: numeric(row.grams_per_unit), grams: numeric(row.grams),
   per100g: { calories: numeric(row.calories_per_100g), protein: numeric(row.protein_per_100g), carbs: numeric(row.carbs_per_100g), fat: numeric(row.fat_per_100g) },
   source: String(row.source_label), corrected: Boolean(row.user_corrected),
+  packaged: row.product_snapshot && typeof row.product_snapshot === "object" ? row.product_snapshot as MealItem["packaged"] : undefined,
 });
 
 export async function loadAccountData(client: SupabaseClient, userId: string) {
-  const [profileResult, mealsResult, savedResult, weightsResult, targetsResult, correctionsResult] = await Promise.all([
+  const [profileResult, mealsResult, savedResult, weightsResult, targetsResult, correctionsResult, productsResult] = await Promise.all([
     client.from("profiles").select("*").eq("user_id", userId).maybeSingle(),
     client.from("meals").select("*").eq("user_id", userId).order("eaten_at", { ascending: false }),
     client.from("saved_meals").select("*").eq("user_id", userId).order("updated_at", { ascending: false }),
     client.from("weight_entries").select("*").eq("user_id", userId).order("entry_date", { ascending: false }),
     client.from("calorie_target_history").select("*").eq("user_id", userId).order("effective_at", { ascending: false }),
     client.from("food_corrections").select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(200),
+    client.from("user_products").select("*").eq("user_id", userId).order("updated_at", { ascending: false }).limit(100),
   ]);
   for (const result of [profileResult, mealsResult, savedResult, weightsResult, targetsResult, correctionsResult]) if (result.error) throw result.error;
+  if (productsResult.error && !optionalTableMissing(productsResult.error)) throw productsResult.error;
   const mealRows = (mealsResult.data ?? []) as Row[];
   const itemResult = mealRows.length
     ? await client.from("meal_items").select("*").eq("user_id", userId).order("position", { ascending: true })
@@ -58,7 +63,10 @@ export async function loadAccountData(client: SupabaseClient, userId: string) {
     id: String(row.id), candidateText: String(row.candidate_text), candidateKey: String(row.candidate_key),
     alias: String(row.selected_alias ?? ""), item: row.item_snapshot as MealItem, createdAt: String(row.created_at),
   }));
-  return { profile, hasProfile: Boolean(p), meals, savedMeals, weights, targets, corrections };
+  const userProducts: UserProduct[] = ((productsResult.data ?? []) as Row[]).map((row) => ({
+    id: String(row.id), product: row.product_snapshot as PackagedProduct, updatedAt: String(row.updated_at),
+  }));
+  return { profile, hasProfile: Boolean(p), meals, savedMeals, weights, targets, corrections, userProducts };
 }
 
 export async function saveProfileWithWeight(client: SupabaseClient, profile: Profile, localDate: string, recordWeight = false) {
@@ -89,8 +97,9 @@ export async function insertMeal(client: SupabaseClient, userId: string, meal: M
   const { error: itemsError } = await client.from("meal_items").insert(meal.items.map((item, position) => ({
     id: item.id, meal_id: meal.id, user_id: userId, food_id: item.foodId, name_snapshot: item.name,
     quantity: item.quantity, unit: item.unit, grams_per_unit: item.gramsPerUnit, grams: item.grams,
-    calories_per_100g: item.per100g.calories, protein_per_100g: item.per100g.protein,
-    carbs_per_100g: item.per100g.carbs, fat_per_100g: item.per100g.fat,
+    calories_per_100g: item.packaged ? null : item.per100g.calories, protein_per_100g: item.packaged ? null : item.per100g.protein,
+    carbs_per_100g: item.packaged ? null : item.per100g.carbs, fat_per_100g: item.packaged ? null : item.per100g.fat,
+    ...(item.packaged ? { product_snapshot: item.packaged } : {}),
     source_label: item.source, user_corrected: item.corrected, position,
   })));
   if (itemsError) {
@@ -108,8 +117,9 @@ export async function importDemoMeal(client: SupabaseClient, userId: string, mea
   const { error: itemsError } = await client.from("meal_items").upsert(meal.items.map((item, position) => ({
     id: item.id, meal_id: meal.id, user_id: userId, food_id: item.foodId, name_snapshot: item.name,
     quantity: item.quantity, unit: item.unit, grams_per_unit: item.gramsPerUnit, grams: item.grams,
-    calories_per_100g: item.per100g.calories, protein_per_100g: item.per100g.protein,
-    carbs_per_100g: item.per100g.carbs, fat_per_100g: item.per100g.fat,
+    calories_per_100g: item.packaged ? null : item.per100g.calories, protein_per_100g: item.packaged ? null : item.per100g.protein,
+    carbs_per_100g: item.packaged ? null : item.per100g.carbs, fat_per_100g: item.packaged ? null : item.per100g.fat,
+    ...(item.packaged ? { product_snapshot: item.packaged } : {}),
     source_label: item.source, user_corrected: item.corrected, position,
   })), { onConflict: "id" });
   if (itemsError) throw itemsError;
@@ -175,8 +185,15 @@ export async function deleteWeight(client: SupabaseClient, id: string) {
   if (error) throw error;
 }
 export async function deleteAllAccountData(client: SupabaseClient, userId: string) {
-  for (const table of ["meals", "saved_meals", "food_corrections", "weight_entries", "calorie_target_history", "profiles"]) {
+  for (const table of ["meals", "saved_meals", "food_corrections", "user_products", "weight_entries", "calorie_target_history", "profiles"]) {
     const { error } = await client.from(table).delete().eq("user_id", userId);
-    if (error) throw error;
+    if (error && !(table === "user_products" && optionalTableMissing(error))) throw error;
   }
+}
+export async function saveUserProduct(client: SupabaseClient, userId: string, product: PackagedProduct) {
+  const payload = { user_id: userId, barcode: product.barcode, product_snapshot: product, updated_at: new Date().toISOString() };
+  const { error } = product.barcode
+    ? await client.from("user_products").upsert(payload, { onConflict: "user_id,barcode" })
+    : await client.from("user_products").insert(payload);
+  if (error) throw error;
 }

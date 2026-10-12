@@ -7,12 +7,14 @@ import packageJson from "../../package.json";
 type UpdateStatus = "idle" | "checking" | "latest" | "available" | "applying" | "offline" | "error" | "unsupported";
 const LAST_CHECK = "forkcast-last-update-check";
 
-export default function PwaUpdates() {
+export default function PwaUpdates({ compact = false, onOpen, hasUnsavedChanges = false, onConfirmedReload }: { compact?: boolean; onOpen?: () => void; hasUnsavedChanges?: boolean; onConfirmedReload?: () => void }) {
   const [version, setVersion] = useState(packageJson.version);
   const [lastCheck, setLastCheck] = useState("");
   const [status, setStatus] = useState<UpdateStatus>("idle");
   const registration = useRef<ServiceWorkerRegistration | null>(null);
   const reloadRequested = useRef(false);
+  const confirmedReload = useRef(onConfirmedReload);
+  confirmedReload.current = onConfirmedReload;
 
   useEffect(() => {
     try { setLastCheck(localStorage.getItem(LAST_CHECK) ?? ""); } catch { /* Storage can be unavailable in private browsing. */ }
@@ -52,7 +54,7 @@ export default function PwaUpdates() {
       if (navigator.serviceWorker.controller) setStatus("checking");
     };
     const onControllerChange = () => {
-      if (reloadRequested.current) { window.location.reload(); return; }
+      if (reloadRequested.current) { reloadRequested.current = false; confirmedReload.current?.(); window.location.reload(); return; }
       if (hadController) setStatus("available");
       else { hadController = true; readVersion(navigator.serviceWorker.controller); }
     };
@@ -98,8 +100,9 @@ export default function PwaUpdates() {
   }
 
   function applyUpdate() {
+    if (hasUnsavedChanges && !window.confirm("Ada perubahan profil atau target yang belum disimpan. Muat ulang dan buang perubahan tersebut?")) return;
     const waiting = registration.current?.waiting;
-    if (!waiting) { window.location.reload(); return; }
+    if (!waiting) { onConfirmedReload?.(); window.location.reload(); return; }
     reloadRequested.current = true;
     setStatus("applying");
     waiting.postMessage({ type: "SKIP_WAITING" });
@@ -118,6 +121,10 @@ export default function PwaUpdates() {
     error: "Pembaruan belum bisa diperiksa atau dipasang. Coba lagi.",
     unsupported: "Browser ini tidak mendukung pemeriksaan pembaruan PWA.",
   };
+
+  if (compact) return <button className="profile-menu-card" type="button" onClick={onOpen}>
+    <span className="card-kicker">APLIKASI</span><strong>Pembaruan aplikasi</strong><small>Versi {version} · {statusText[status]}</small><span className="profile-menu-link">Buka pembaruan →</span>
+  </button>;
 
   return <section className="panel update-panel" aria-labelledby="about-forkcast">
     <div className="card-top"><div><span className="card-kicker">APLIKASI</span><h2 id="about-forkcast">Tentang Forkcast</h2></div><span className="card-soft-icon"><RefreshCw size={19} /></span></div>

@@ -1,15 +1,17 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
-import { ArrowRight, CircleHelp, Settings2, Trash2, UserRound } from "lucide-react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { ArrowLeft, ArrowRight, CircleHelp, Settings2, Trash2, UserRound } from "lucide-react";
 import { getSupabaseBrowser } from "@/lib/supabase/browser";
-import type { Profile } from "@/lib/food";
+import type { Profile, WeightEntry } from "@/lib/food";
 import { activeTarget, estimateTarget, profileError, validTarget, type TargetRecord, type TargetSource } from "@/lib/target";
 import PwaUpdates from "./PwaUpdates";
+import AccountPassword from "./AccountPassword";
 
 type Props = {
   profile: Profile;
   targets: TargetRecord[];
+  weights: WeightEntry[];
   accountId: string | null;
   accountEmail: string;
   storageMode: "local" | "loading" | "account" | "error";
@@ -22,7 +24,11 @@ type Props = {
   onSaveTarget: (record: TargetRecord) => Promise<void>;
   onImport: () => Promise<void>;
   onRemoveAll: () => void;
+  onOpenProgress: () => void;
+  onDirtyChange: (dirty: boolean) => void;
 };
+
+type ProfileSection = "overview" | "basic" | "target" | "weight" | "updates" | "account";
 
 const fmt = (value: number) => Math.round(value).toLocaleString("id-ID");
 const dateTime = (value: string) => new Date(value).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" });
@@ -44,11 +50,24 @@ export default function ProfileView(props: Props) {
   const [authNotice, setAuthNotice] = useState("");
   const [authError, setAuthError] = useState("");
   const [importBusy, setImportBusy] = useState(false);
+  const allowConfirmedReload = useRef(false);
+  const [section, setSection] = useState<ProfileSection>(props.recoveryMode ? "account" : "overview");
   useEffect(() => { setDraft(props.profile); }, [props.profile]);
   useEffect(() => { setTargetDraft(activeTarget(props.targets)?.calories ?? props.profile.calorieTarget); }, [props.targets, props.profile.calorieTarget]);
+  useEffect(() => { if (props.recoveryMode) setSection("account"); }, [props.recoveryMode]);
   const dirty = JSON.stringify(draft) !== JSON.stringify(props.profile);
   const estimate = estimateTarget(draft);
   const active = activeTarget(props.targets);
+  const targetDirty = targetDraft !== (active?.calories ?? props.profile.calorieTarget) || targetNote.trim().length > 0 || targetSource !== "manual";
+  const latestWeight = [...props.weights].sort((a, b) => b.date.localeCompare(a.date))[0];
+  const onDirtyChange = props.onDirtyChange;
+  useEffect(() => { onDirtyChange(dirty || targetDirty); }, [dirty, targetDirty, onDirtyChange]);
+  useEffect(() => {
+    if (!dirty && !targetDirty) return;
+    const warn = (event: BeforeUnloadEvent) => { if (allowConfirmedReload.current) return; event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty, targetDirty]);
 
   async function saveProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -80,7 +99,7 @@ export default function ProfileView(props: Props) {
     };
     setPendingTarget(record);
     setBusy(true);
-    try { await props.onSaveTarget(record); setPendingTarget(null); setTargetNote(""); setTargetNotice("Target baru aktif dan tercatat di riwayat."); }
+    try { await props.onSaveTarget(record); setPendingTarget(null); setTargetNote(""); setTargetSource("manual"); setTargetNotice("Target baru aktif dan tercatat di riwayat."); }
     catch { setTargetNotice("Target belum tersimpan. Periksa koneksi dan coba lagi."); }
     finally { setBusy(false); }
   }
@@ -100,12 +119,12 @@ export default function ProfileView(props: Props) {
         if (error) throw error;
         props.onRecovered(); setAuthNotice("Kata sandi berhasil diganti."); setPassword(""); setConfirmPassword("");
       } else if (authMode === "signup") {
-        const { data, error } = await client.auth.signUp({ email: email.trim(), password, options: { emailRedirectTo: window.location.origin } });
+        const { data, error } = await client.auth.signUp({ email: email.trim(), password, options: { emailRedirectTo: `${window.location.origin}/` } });
         if (error) throw error;
         setAuthNotice(data.session ? "Akun dibuat dan kamu sudah masuk." : "Periksa email untuk mengonfirmasi akun, lalu masuk.");
         setPassword(""); setConfirmPassword("");
       } else if (authMode === "reset") {
-        const { error } = await client.auth.resetPasswordForEmail(email.trim(), { redirectTo: window.location.origin });
+        const { error } = await client.auth.resetPasswordForEmail(email.trim(), { redirectTo: `${window.location.origin}/` });
         if (error) throw error;
         setAuthNotice("Jika alamat terdaftar, tautan pemulihan telah dikirim.");
       } else {
@@ -122,7 +141,7 @@ export default function ProfileView(props: Props) {
     if (!email.trim()) { setAuthError("Isi email terlebih dahulu."); return; }
     const client = getSupabaseBrowser(); if (!client) return;
     setAuthBusy(true);
-    const { error } = await client.auth.signInWithOtp({ email: email.trim(), options: { emailRedirectTo: window.location.origin } });
+    const { error } = await client.auth.signInWithOtp({ email: email.trim(), options: { emailRedirectTo: `${window.location.origin}/` } });
     setAuthBusy(false);
     setAuthNotice(error ? "" : "Tautan masuk telah dikirim. Periksa emailmu.");
     setAuthError(error?.message ?? "");
@@ -137,9 +156,20 @@ export default function ProfileView(props: Props) {
   }
 
   return <>
-    <div className="page-intro"><span className="eyebrow">TENTANG KAMU</span><h1>Profil & target</h1><p>Sesuaikan perkiraan dengan kebutuhan dan kenyamananmu.</p></div>
-    <div className="profile-grid">
-      <section className="panel">
+    <div className="page-intro profile-intro">
+      {section !== "overview" && <button className="outline-button" type="button" onClick={() => setSection("overview")}><ArrowLeft size={16} /> Kembali ke Profil</button>}
+      <span className="eyebrow">TENTANG KAMU</span>
+      <h1>{section === "overview" ? "Profil" : section === "basic" ? "Data dasar" : section === "target" ? "Target kalori" : section === "weight" ? "Riwayat berat" : section === "updates" ? "Pembaruan aplikasi" : "Akun & privasi"}</h1>
+      <p>{section === "overview" ? "Pilih bagian yang ingin kamu lihat atau ubah." : "Perubahan disimpan saat kamu menekan tombol simpan."}</p>
+    </div>
+    {section === "overview" && <div className="profile-menu">
+      <button className="profile-menu-card" type="button" onClick={() => setSection("basic")}><span className="card-kicker">PROFIL</span><strong>Data dasar</strong><small>{props.profile.age || "—"} tahun · {props.profile.height || "—"} cm · {(latestWeight?.weight ?? props.profile.weight) || "—"} kg</small><span className="profile-menu-link">Lihat data dasar <ArrowRight size={15} /></span></button>
+      <button className="profile-menu-card" type="button" onClick={() => setSection("target")}><span className="card-kicker">PANDUAN HARIAN</span><strong>Target kalori</strong><small>{fmt(active?.calories ?? props.profile.calorieTarget)} kkal/hari · {active?.source === "calculated" ? "Dari rumus" : "Manual"}</small><span className="profile-menu-link">Lihat target & riwayat <ArrowRight size={15} /></span></button>
+      <button className="profile-menu-card" type="button" onClick={() => setSection("weight")}><span className="card-kicker">PROGRES</span><strong>Riwayat berat</strong><small>{latestWeight ? `${latestWeight.weight} kg · ${new Date(`${latestWeight.date}T12:00:00`).toLocaleDateString("id-ID", { dateStyle: "medium" })}` : "Belum ada catatan berat"}</small><span className="profile-menu-link">Lihat riwayat berat <ArrowRight size={15} /></span></button>
+      <button className="profile-menu-card" type="button" onClick={() => setSection("account")}><span className="card-kicker">PENGATURAN</span><strong>Akun & privasi</strong><small>{props.accountId ? props.accountEmail : "Mode demo di perangkat ini"}</small><span className="profile-menu-link">Lihat pengaturan <ArrowRight size={15} /></span></button>
+    </div>}
+    <div className="profile-grid profile-detail-grid" hidden={section !== "basic" && section !== "target"}>
+      <section className="panel" hidden={section !== "basic"}>
         <div className="card-top"><div><span className="card-kicker">DATA DASAR</span><h2>Profilmu</h2></div><span className="card-soft-icon"><UserRound size={19} /></span></div>
         <form onSubmit={saveProfile}>
           <div className="form-grid">
@@ -156,7 +186,7 @@ export default function ProfileView(props: Props) {
           {profileNotice && <p className="form-notice" role="status">{profileNotice}</p>}
         </form>
       </section>
-      <section className="panel target-panel">
+      <section className="panel target-panel" hidden={section !== "target"}>
         <div className="card-top"><div><span className="card-kicker">PANDUAN HARIAN</span><h2>Target kalorimu</h2></div><span className="card-soft-icon"><Settings2 size={19} /></span></div>
         <div className="suggested-target"><span>Target aktif</span><strong>{fmt(active?.calories ?? props.profile.calorieTarget)} <small>kkal/hari</small></strong></div>
         <div className="suggested-target"><span>Perkiraan dari profil {dirty ? "(belum disimpan)" : ""}</span><strong>{estimate ? fmt(estimate.calories) : "Tidak tersedia"} {estimate && <small>kkal/hari</small>}</strong></div>
@@ -172,17 +202,22 @@ export default function ProfileView(props: Props) {
         <div className="formula-note"><CircleHelp size={18} /><p>Perkiraan memakai Mifflin–St Jeor, faktor aktivitas 1,2–1,65, dan penyesuaian tujuan −300/0/+250 kkal. Ini bukan saran medis.</p></div>
       </section>
     </div>
-    <section className="panel target-history"><span className="card-kicker">RIWAYAT TARGET</span><h2>Perubahan target</h2>
+    <section className="panel target-history" hidden={section !== "target"}><span className="card-kicker">RIWAYAT TARGET</span><h2>Perubahan target</h2>
       {props.targets.length ? <ol>{props.targets.map((record) => <li key={record.id}><div><strong>{fmt(record.calories)} kkal/hari</strong><span>{record.source === "calculated" ? "Dari rumus" : "Manual"} · berlaku {dateTime(record.effectiveAt)}</span>{record.note && <small>{record.note}</small>}{record.inputs && <small>Usia {record.inputs.age} · {record.inputs.weight} kg · {record.inputs.height} cm · {record.inputs.activity} · {record.inputs.goal} · {record.formulaVersion}</small>}</div></li>)}</ol> : <p className="microcopy">Belum ada riwayat. Simpan target pertama untuk mulai mencatat perubahan.</p>}
     </section>
-    <section className="panel account-panel"><span className="card-kicker">AKUN</span><h2>{props.accountId ? "Tersambung ke Supabase" : "Simpan lintas perangkat"}</h2>
+    <section className="panel account-panel" hidden={section !== "account"}><span className="card-kicker">AKUN</span><h2>{props.accountId ? "Tersambung ke Supabase" : "Simpan lintas perangkat"}</h2>
       {props.recoveryMode ? <form className="account-form" onSubmit={submitAuth}><p>Buat kata sandi baru untuk akunmu.</p><input type="password" minLength={6} required placeholder="Kata sandi baru" value={password} onChange={(e) => setPassword(e.target.value)} /><input type="password" minLength={6} required placeholder="Ulangi kata sandi" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} /><button className="primary-button" disabled={authBusy}>{authBusy ? "Menyimpan..." : "Ganti kata sandi"}</button></form>
       : props.accountId ? <><p>{props.accountEmail}</p><button className="outline-button" disabled={authBusy} onClick={signOut}>{authBusy ? "Keluar..." : "Keluar dari akun"}</button>{props.canImport && <div className="import-demo"><p>Ada catatan demo di perangkat ini. Impor profil dan makanan ke akun sekali saja; data demo tetap tersimpan.</p><button className="outline-button" disabled={importBusy} onClick={async () => { setImportBusy(true); setAuthError(""); try { await props.onImport(); setAuthNotice("Data demo berhasil diimpor."); } catch { setAuthError("Impor belum selesai. Coba lagi; catatan yang sudah masuk tidak akan digandakan."); } finally { setImportBusy(false); } }}>{importBusy ? "Mengimpor..." : "Impor data demo"}</button></div>}</>
       : props.supabaseConfigured ? <><div className="auth-tabs"><button className={authMode === "signin" ? "active" : ""} onClick={() => { setAuthMode("signin"); setAuthError(""); }}>Masuk</button><button className={authMode === "signup" ? "active" : ""} onClick={() => { setAuthMode("signup"); setAuthError(""); }}>Daftar</button><button className={authMode === "reset" ? "active" : ""} onClick={() => { setAuthMode("reset"); setAuthError(""); }}>Lupa sandi</button></div><form className="account-form" onSubmit={submitAuth}><p>Catatan demo di perangkat ini tetap terpisah dari akun.</p><input type="email" required placeholder="Email kamu" value={email} onChange={(e) => setEmail(e.target.value)} />{authMode !== "reset" && <input type="password" required minLength={6} placeholder="Kata sandi" value={password} onChange={(e) => setPassword(e.target.value)} />}{authMode === "signup" && <input type="password" required minLength={6} placeholder="Ulangi kata sandi" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />}<button className="primary-button" disabled={authBusy}>{authBusy ? "Memproses..." : authMode === "signup" ? "Buat akun" : authMode === "reset" ? "Kirim tautan pemulihan" : "Masuk"}</button></form>{authMode === "signin" && <button className="text-button" disabled={authBusy} onClick={magicLink}>Atau kirim tautan masuk lewat email</button>}</>
       : <p>Mode demo aktif. Tambahkan URL proyek dan publishable key ke .env.local untuk mengaktifkan akun.</p>}
       {authNotice && <p className="form-notice" role="status">{authNotice}</p>}{authError && <p className="error-message" role="alert">{authError}</p>}
+      {props.accountId && !props.recoveryMode && <AccountPassword />}
     </section>
-    <section className="panel privacy-panel"><div><span className="card-kicker">DATA & PRIVASI</span><h2>{props.accountId ? "Data akun" : "Mode demo lokal"}</h2><p>{props.accountId ? "Catatan akunmu disimpan di Supabase. Foto tidak disimpan." : "Catatan demo berada di penyimpanan browser perangkat ini. Foto tidak disimpan."}</p><p>Untuk memasang Porsi: di iPhone gunakan Bagikan → Tambahkan ke Layar Utama; di Android pilih Instal aplikasi pada menu browser.</p></div><button className="outline-button danger-text" onClick={props.onRemoveAll}><Trash2 size={17} /> {props.accountId ? "Hapus data akun" : "Hapus semua data"}</button></section>
-    <PwaUpdates />
+    <section className="panel privacy-panel" hidden={section !== "account"}><div><span className="card-kicker">DATA & PRIVASI</span><h2>{props.accountId ? "Data akun" : "Mode demo lokal"}</h2><p>{props.accountId ? "Catatan akunmu disimpan di Supabase. Foto tidak disimpan." : "Catatan demo berada di penyimpanan browser perangkat ini. Foto tidak disimpan."}</p><p>Untuk memasang Porsi: di iPhone gunakan Bagikan → Tambahkan ke Layar Utama; di Android pilih Instal aplikasi pada menu browser.</p></div><button className="outline-button danger-text" onClick={props.onRemoveAll}><Trash2 size={17} /> {props.accountId ? "Hapus data akun" : "Hapus semua data"}</button></section>
+    {section === "weight" && <section className="panel profile-weight-panel"><span className="card-kicker">RIWAYAT BERAT</span><h2>Catatan berat</h2>
+      {props.weights.length ? <div className="weight-list">{[...props.weights].sort((a, b) => b.date.localeCompare(a.date)).map((entry) => <div key={entry.id}><span>{new Date(`${entry.date}T12:00:00`).toLocaleDateString("id-ID", { dateStyle: "long" })}</span><strong>{entry.weight} kg</strong></div>)}</div> : <p className="microcopy">Belum ada catatan berat.</p>}
+      <p className="microcopy">Tambah atau ubah catatan berat di tab Progres.</p><button className="outline-button" type="button" onClick={props.onOpenProgress}>Buka Progres <ArrowRight size={16} /></button>
+    </section>}
+    <div className="profile-update-slot" hidden={section !== "overview" && section !== "updates"}><PwaUpdates compact={section === "overview"} onOpen={() => setSection("updates")} hasUnsavedChanges={dirty || targetDirty} onConfirmedReload={() => { allowConfirmedReload.current = true; }} /></div>
   </>;
 }
