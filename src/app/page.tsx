@@ -8,7 +8,9 @@ import SavedMealLibrary from "./SavedMealLibrary";
 import SavedMealForm from "./SavedMealForm";
 import FoodShortcuts from "./FoodShortcuts";
 import PhotoReview, { type Analysis } from "./PhotoReview";
+import WeeklyProgress from "./WeeklyProgress";
 import { copyMealItems, correctionsFromReview, frequentFoodShortcuts, recentFoodShortcuts, savedMealError, type FoodCorrection } from "@/lib/meal-memory";
+import { addCalendarDays, mondayOf, summarizeWeek, todayInTimeZone } from "@/lib/weekly-progress";
 import { activeTarget, addTargetRecord, profileError, putWeightRecord, validTarget, type TargetRecord } from "@/lib/target";
 import { Activity, ArrowRight, Bookmark, CalendarDays, Camera, Check, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, Flame, Home, Info, Leaf, MoreHorizontal, Plus, Search, Sparkles, Trash2, TrendingUp, Upload, UserRound, UtensilsCrossed, WifiOff, X } from "lucide-react";
 import { changeServing, defaultProfile, editMealItem, foods, itemFromFood, matchCandidateFood, mealTypes, nutrientsFor, total, type Food, type Meal, type MealItem, type MealType, type Profile, type SavedMeal, type WeightEntry } from "@/lib/food";
@@ -24,6 +26,7 @@ const cloneItems = copyMealItems;
 export default function HomePage() {
   const [ready, setReady] = useState(false);
   const [tab, setTab] = useState<Tab>("beranda");
+  const [weekStart, setWeekStart] = useState(() => mondayOf(todayInTimeZone()));
   const [date, setDate] = useState(today);
   const [profile, setProfile] = useState<Profile>(defaultProfile);
   const [meals, setMeals] = useState<Meal[]>([]);
@@ -71,7 +74,6 @@ export default function HomePage() {
   const [online, setOnline] = useState(true);
   const [installPrompt, setInstallPrompt] = useState<{ prompt: () => Promise<void> } | null>(null);
   const [message, setMessage] = useState("");
-  const [weightInput, setWeightInput] = useState("");
   const [accountId, setAccountId] = useState<string | null>(null);
   const [accountEmail, setAccountEmail] = useState("");
   const [storageMode, setStorageMode] = useState<"local" | "loading" | "account" | "error">("local");
@@ -151,7 +153,7 @@ export default function HomePage() {
   const recentFoods = useMemo(() => recentFoodShortcuts(meals), [meals]);
   const frequentFoods = useMemo(() => frequentFoodShortcuts(meals), [meals]);
   const analysisNeedsReview = Boolean(analysis && (!analysisConfirmed || unmatchedCandidates.length || analysis.items.some((_, index) => !ignoredCandidates.includes(index) && !draft.some((item) => item.id === analysisSelections[index]))));
-  const dailyHistory = useMemo(() => Array.from({ length: 7 }, (_, index) => { const d = new Date(); d.setDate(d.getDate() - (6 - index)); const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; return { date: day, calories: total(meals.filter((meal) => meal.date === day).flatMap((meal) => meal.items)).calories }; }), [meals]);
+  const weeklySummary = useMemo(() => summarizeWeek(weekStart, meals, targets, weights, todayInTimeZone()), [weekStart, meals, targets, weights]);
 
   function openEditor(mode: EditorMode, items: MealItem[] = [], title = "") {
     setEditor(mode); setDraft(cloneItems(items)); setMealTitle(title); setMealDate(date); setMealTime(new Date().toTimeString().slice(0, 5)); setQuery(""); setAnalysis(null); setAnalysisConfirmed(false); setUnmatchedCandidates([]); setIgnoredCandidates([]); setAnalysisSelections({}); setAnalysisInitialFoodIds({}); setAnalysisAliases({}); setAnalysisError(""); setPhotoName(""); setPhotoFile(null); setAnswer(""); setSearchOpen(mode === "manual" && items.length === 0); setCustomOpen(false); setEntryFromSaved(false); setSavedFormOpen(false); setSavedEditingId(null); setSavedTitle(""); setSavedNote(""); setSavedCategory(null);
@@ -303,17 +305,17 @@ export default function HomePage() {
     const entry = { id: weights.find((item) => item.date === today())?.id ?? crypto.randomUUID(), date: today(), weight };
     const nextProfile = { ...profile, weight };
     if (accountId) {
-      const client = getSupabaseBrowser(); if (!client || storageMode !== "account") return;
-      if (!hasProfile) { setMessage("Simpan profil dahulu sebelum mencatat berat."); setTab("profil"); return; }
+      const client = getSupabaseBrowser(); if (!client || storageMode !== "account") return false;
+      if (!hasProfile) { setMessage("Simpan profil dahulu sebelum mencatat berat."); setTab("profil"); return false; }
       try {
         await saveProfileWithWeight(client, nextProfile, entry.date, true);
         const data = await loadAccountData(client, accountId);
         setWeights(data.weights); setProfile(data.profile);
-      } catch { setMessage("Berat belum tersimpan ke akun. Periksa koneksi dan coba lagi."); return; }
+      } catch { setMessage("Berat belum tersimpan ke akun. Periksa koneksi dan coba lagi."); return false; }
     } else {
       setWeights((current) => putWeightRecord(current, entry)); setProfile(nextProfile);
     }
-    setWeightInput(""); setMessage("Berat badan tersimpan.");
+    setMessage("Berat badan tersimpan."); return true;
   }
   async function removeWeight(id: string) {
     if (accountId) {
@@ -458,7 +460,7 @@ export default function HomePage() {
           <div className="below-grid"><section className="quick-card"><div className="quick-illustration"><div className="plate"><span>🥗</span></div><span className="sparkle-one">✦</span><span className="sparkle-two">✧</span></div><div><span className="eyebrow">CARA CEPAT</span><h2>Satu foto, satu langkah awal.</h2><p>Kenali kandidat makanan dari foto, lalu sesuaikan porsinya sebelum disimpan.</p><button className="dark-button" onClick={() => { setMealType("Makan siang"); openEditor("foto"); }}><Camera size={17} /> Coba analisis foto <ArrowRight size={17} /></button></div></section><section className="insight-card"><span className="eyebrow">PENGINGAT LEMBUT</span><div className="insight-icon"><Leaf size={22} /></div><h2>Angka adalah panduan, bukan penilaian.</h2><p>Porsi dan cara memasak bisa berbeda. Koreksi estimasi agar catatanmu lebih dekat dengan makanan yang benar-benar kamu makan.</p></section></div>
         </>}
         {tab === "riwayat" && <><PageIntro eyebrow="CATATANMU" title="Riwayat makan" subtitle="Semua makanan yang kamu catat, tersusun dari yang terbaru." /><div className="history-actions"><button className="primary-button" onClick={() => openEditor("manual")}><Plus size={18} /> Catat makanan</button><button className="outline-button" onClick={() => openEditor("tersimpan")}><Bookmark size={17} /> Makanan tersimpan</button></div>{meals.length ? [...meals].sort((a, b) => `${b.date}${b.createdAt}`.localeCompare(`${a.date}${a.createdAt}`)).map((meal) => <div className="history-card" key={meal.id}><div className="history-date">{formatDate(meal.date)} · {meal.eatenAt ? new Date(meal.eatenAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) : ""} · {meal.type}</div><div className="history-main"><div><h3>{meal.title}</h3><p>{meal.items.map((item) => `${item.name} ${number(item.grams)} g`).join(" · ")}</p><small>{meal.method === "foto" ? "Ditinjau dari foto" : meal.method === "tersimpan" ? "Dari makanan tersimpan" : "Dicatat manual"} · Estimasi</small></div><div className="history-nutrition"><strong>{number(total(meal.items).calories)} <small>kkal</small></strong><span>P {number(total(meal.items).protein)} · K {number(total(meal.items).carbs)} · L {number(total(meal.items).fat)} g</span></div></div><div className="history-footer"><button onClick={() => { setDate(meal.date); setMealType(meal.type); openEditor("manual", meal.items, meal.title); }}>Catat lagi <ArrowRight size={15} /></button><button onClick={() => saveExistingCombination(meal)}><Bookmark size={15} /> Simpan kombinasi</button><button className="danger-text" onClick={() => removeMeal(meal.id)}><Trash2 size={15} /> Hapus</button></div></div>) : <EmptyState icon={<UtensilsCrossed size={27} />} title="Belum ada catatan" description="Mulai dengan mencari makanan atau menambahkan dari foto." action="Catat makanan" onAction={() => openEditor("manual")} />}</>}
-        {tab === "progres" && <><PageIntro eyebrow="GAMBARAN BESAR" title="Progresmu" subtitle="Lihat pola dari waktu ke waktu, dengan ruang untuk hari yang berbeda." /><div className="progress-grid"><section className="panel"><div className="card-top"><div><span className="card-kicker">7 HARI TERAKHIR</span><h2>Kalori harian</h2></div><span className="card-soft-icon"><Activity size={19} /></span></div><div className="bar-chart" aria-label="Grafik kalori tujuh hari terakhir">{dailyHistory.map((day) => <div className="bar-column" key={day.date}><div className="bar-track"><div className="bar-fill" style={{ height: `${Math.min(day.calories / Math.max(target, 1) * 100, 100)}%` }} title={`${formatDate(day.date)}: ${number(day.calories)} kkal`} /></div><span>{formatDate(day.date, { weekday: "short" })}</span><small>{day.calories ? number(day.calories) : "—"}</small></div>)}</div><p className="microcopy">Hari tanpa catatan ditampilkan kosong, bukan sebagai nol konsumsi.</p></section><section className="panel"><div className="card-top"><div><span className="card-kicker">BERAT BADAN</span><h2>Catatan berat</h2></div><span className="card-soft-icon"><TrendingUp size={19} /></span></div><div className="weight-current"><strong>{weights.length ? [...weights].sort((a, b) => b.date.localeCompare(a.date))[0].weight : profile.weight} <small>kg</small></strong><span>{weights.length ? "Catatan terakhir" : "Dari profil"}</span></div><form className="weight-form" onSubmit={(event) => { event.preventDefault(); const weight = Number(weightInput); if (weight < 20 || weight > 400) { setMessage("Masukkan berat antara 20–400 kg."); return; } void recordWeight(weight); }}><label htmlFor="weight">Catat berat hari ini</label><div><input id="weight" type="number" step="0.1" min="20" max="400" placeholder="Contoh: 65,5" value={weightInput} onChange={(event) => setWeightInput(event.target.value)} required /><button className="primary-button" type="submit">Simpan</button></div></form>{weights.length > 0 && <div className="weight-list">{[...weights].sort((a, b) => b.date.localeCompare(a.date)).map((entry) => <div key={entry.id}><span>{formatDate(entry.date)}</span><strong>{entry.weight} kg</strong><button aria-label={`Hapus berat ${entry.date}`} onClick={() => removeWeight(entry.id)}><X size={15} /></button></div>)}</div>}</section></div></>}
+        {tab === "progres" && <WeeklyProgress summary={weeklySummary} currentWeek={weekStart >= mondayOf(todayInTimeZone())} loading={!ready || storageMode === "loading"} error={storageMode === "error"} allWeights={weights} onPrevious={() => setWeekStart((current) => addCalendarDays(current, -7))} onNext={() => setWeekStart((current) => { const next = addCalendarDays(current, 7); return next <= mondayOf(todayInTimeZone()) ? next : current; })} onOpenDate={(selectedDate) => { setDate(selectedDate); setTab("beranda"); }} onRetry={() => setStorageMode("loading")} onSaveWeight={recordWeight} onRemoveWeight={removeWeight} />}
         {tab === "profil" && <ProfileView profile={profile} targets={targets} accountId={accountId} accountEmail={accountEmail} storageMode={storageMode} supabaseConfigured={supabaseConfigured} hasProfile={hasProfile} canImport={canImport} recoveryMode={recoveryMode} onRecovered={() => setRecoveryMode(false)} onSaveProfile={saveProfile} onSaveTarget={saveTarget} onImport={importDemo} onRemoveAll={() => void removeAllData()} />}
       </div>
     </main>

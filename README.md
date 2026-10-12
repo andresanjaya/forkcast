@@ -10,6 +10,7 @@ Mobile-first Indonesian food logging PWA. The existing dashboard design is prese
 - With Supabase configured, email/password sign-up, sign-in, recovery, and the existing magic-link option load private profiles, meals, items, saved combinations, target history, and weight entries. Demo and account data stay separate; an eligible new account can import demo data once.
 - With Gemini configured, the server analyzes a compressed JPEG/PNG/WebP photo and returns candidate foods, approximate gram ranges, confidence, and a follow-up question. The user must review and confirm suggestions before saving. Unmatched foods require a comparable catalog choice or an explicit decision to omit them.
 - Personal Meal Memory lets users create, edit, delete, search, and reuse saved combinations. Recent foods use actual logged meal times; frequent foods count item occurrences in the last 30 days. Photo corrections are retained as private structured choices and offered only for exact normalized candidate or alias matches. Every reused suggestion requires review before logging.
+- Weekly summary in **Progres** shows Monday–Sunday meal counts, recorded calorie and macro averages, historical target comparisons, weight entries, and descriptive insights. Days without logs remain missing rather than zero.
 - Installable PWA shell, offline fallback, basic empty/error states, and an account-data erase action.
 
 The 12 food records are **illustrative demo values**, not verified composition data. Prepared dishes vary by recipe and oil use. The calorie target is an estimate, not medical advice.
@@ -20,6 +21,15 @@ The 12 food records are **illustrative demo values**, not verified composition d
 - Saved combinations keep item and nutrition snapshots. Selecting one opens the existing editor for date, meal type, and portion review. Changing or deleting a combination never changes diary entries already saved from it.
 - After a confirmed photo review, a changed food or serving can be stored as a private structured correction. Later photo reviews offer a prior correction or saved combination only when the normalized candidate text exactly matches its recorded candidate, alias, or saved name. The user must accept the suggestion and confirm the review; nothing is logged automatically. Forkcast does not train Gemini on these records or send the meal history with the photo.
 - The local demo stores these records in this browser. Signed-in records are scoped to the authenticated user by Supabase RLS. The app currently loads the 200 newest corrections for matching.
+
+## Weekly summary rules
+
+- The week runs Monday–Sunday using local calendar dates. The app has no stored timezone preference, so the summary defaults to **Asia/Makassar (UTC+08:00)**. Existing diary `local_date` and weight `entry_date` fields are used as recorded; older entries created while the device used another timezone are not rewritten.
+- A logged day has at least one diary meal. Future dates are excluded. Daily calories and each macro come from the diary item snapshots. If any item lacks a valid value for a nutrient, that entire day is excluded from that nutrient's average and the summary marks the data incomplete. A meal with no items is also incomplete. Valid recorded zero values remain zero.
+- Averages use only days with complete data for that nutrient; the UI shows each denominator. Displayed calories are rounded to whole kilocalories and macros to one decimal gram. No unlogged day is added as zero.
+- A target is comparable only if a target-history record was effective before the end of that local date. The newest such record is used; the current profile target is never backfilled into earlier dates. The UI shows below, equal, or above counts only for days with complete calories and an active target. Insight comparisons require at least two comparable days.
+- Weight differences use the earliest and latest valid weight records within the selected week, with their dates shown. A single weight record has no inferred change. Insights are deterministic descriptions of these aggregates; Gemini is not used.
+- The summary reuses the current user's already loaded meal, target, and weight records. Signed-in records remain protected by the existing Supabase RLS policies; no new table, migration, API key, or dashboard step is needed for MVP 4.
 
 ## Local development
 
