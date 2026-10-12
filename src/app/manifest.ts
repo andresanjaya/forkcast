@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Porsi — Catat makan, lebih tenang",
-    short_name: "Porsi",
+    name: "Forkcast — Catat makan, lebih tenang",
+    short_name: "Forkcast",
     description: "Catat makanan Indonesia dengan estimasi yang bisa dikoreksi.",
     start_url: "/",
     display: "standalone",

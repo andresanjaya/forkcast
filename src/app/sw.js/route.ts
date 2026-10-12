@@ -7,7 +7,7 @@ export const dynamic = "force-static";
 const version = `${packageJson.version}+${Date.now().toString(36)}`;
 const source = `const VERSION = ${JSON.stringify(version)};
 const CACHE = "forkcast-shell-" + VERSION;
-const SHELL = ["/", "/favicon-32.png", "/favicon-48.png", "/apple-touch-icon.png", "/icon-192.png", "/icon-512.png"];
+const SHELL = ["/", "/catat", "/favicon-32.png", "/favicon-48.png", "/apple-touch-icon.png", "/icon-192.png", "/icon-512.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)));
@@ -28,7 +28,7 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (request.method !== "GET" || url.origin !== self.location.origin || url.pathname.startsWith("/api/")) return;
   if (request.mode === "navigate") {
-    event.respondWith(fetch(request).catch(() => caches.match("/")));
+    event.respondWith(fetch(request).catch(async () => (await caches.match(url.pathname)) ?? caches.match("/")));
     return;
   }
   if (url.pathname.startsWith("/_next/static/")) {

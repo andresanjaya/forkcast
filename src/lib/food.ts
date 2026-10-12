@@ -126,6 +126,21 @@ export function searchLibraryFoods(query: string): LibraryFood[] {
     .sort((a, b) => a.score - b.score || a.food.name.localeCompare(b.food.name, "id-ID")).map((entry) => entry.food);
 }
 
+export function searchPhotoFoods(query: string): Food[] {
+  const normalized = normalizeFoodSearch(query);
+  if (!normalized) return allFoods.slice(0, 12);
+  const tokens = normalized.split(" ");
+  return allFoods.map((food) => {
+    const names = [food.name, ...food.aliases].map(normalizeFoodSearch);
+    const score = names[0] === normalized ? 0 : names.includes(normalized) ? 1
+      : names[0].startsWith(normalized) ? 2 : names.some((name) => name.startsWith(normalized)) ? 3
+      : tokens.every((token) => names.some((name) => name.includes(token))) ? 4 : null;
+    return { food, score };
+  }).filter((entry): entry is { food: Food; score: number } => entry.score !== null)
+    .sort((a, b) => a.score - b.score || a.food.name.localeCompare(b.food.name, "id-ID"))
+    .slice(0, 12).map((entry) => entry.food);
+}
+
 export const mealTypes: MealType[] = ["Sarapan", "Makan siang", "Makan malam", "Camilan"];
 export const zero: Nutrients = { calories: 0, protein: 0, carbs: 0, fat: 0 };
 export function nutrientsFor(item: MealItem): OptionalNutrients {

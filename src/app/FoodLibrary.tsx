@@ -1,5 +1,6 @@
 "use client";
 
+import FoodPhotoHeader from "@/components/forkcast/FoodPhotoHeader";
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Plus, Search } from "lucide-react";
 import { changeServing, itemFromFood, libraryFoods, nutrientsFor, searchLibraryFoods, type LibraryFood, type MealItem, type MealType } from "@/lib/food";
@@ -44,7 +45,7 @@ export default function FoodLibrary(props: Props) {
     const nutrition = valid ? nutrientsFor(item) : null;
     return <section className="food-library panel" aria-label="Detail makanan">
       <button className="text-button library-back" type="button" onClick={back}><ArrowLeft size={16} /> Kembali ke hasil</button>
-      <span className="card-kicker">{food?.category ?? "CATATANMU"}</span>
+      <FoodPhotoHeader name={item.name} /><span className="card-kicker">{food?.category ?? "CATATANMU"}</span>
       <h3 ref={detailRef} tabIndex={-1}>{item.name}</h3>
       <p className="library-source-status">{food ? food.dataStatus === "padanan" ? "Padanan dari data sumber" : "Data dari sumber" : "Dari catatanmu sebelumnya"} · Estimasi per 100 g</p>
       <div className="library-serving-grid">

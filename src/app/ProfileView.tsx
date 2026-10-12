@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { ArrowLeft, ArrowRight, CircleHelp, Settings2, Trash2, UserRound } from "lucide-react";
+import { ArrowLeft, ArrowRight, Target, Scale, ShieldCheck, CircleHelp, Settings2, Trash2, UserRound } from "lucide-react";
 import { getSupabaseBrowser } from "@/lib/supabase/browser";
 import type { Profile, WeightEntry } from "@/lib/food";
 import { activeTarget, estimateTarget, profileError, validTarget, type TargetRecord, type TargetSource } from "@/lib/target";
@@ -9,6 +9,7 @@ import PwaUpdates from "./PwaUpdates";
 import AccountPassword from "./AccountPassword";
 
 type Props = {
+  initialSection?: "overview" | "account";
   profile: Profile;
   targets: TargetRecord[];
   weights: WeightEntry[];
@@ -51,7 +52,7 @@ export default function ProfileView(props: Props) {
   const [authError, setAuthError] = useState("");
   const [importBusy, setImportBusy] = useState(false);
   const allowConfirmedReload = useRef(false);
-  const [section, setSection] = useState<ProfileSection>(props.recoveryMode ? "account" : "overview");
+  const [section, setSection] = useState<ProfileSection>(props.recoveryMode ? "account" : props.initialSection ?? "overview");
   useEffect(() => { setDraft(props.profile); }, [props.profile]);
   useEffect(() => { setTargetDraft(activeTarget(props.targets)?.calories ?? props.profile.calorieTarget); }, [props.targets, props.profile.calorieTarget]);
   useEffect(() => { if (props.recoveryMode) setSection("account"); }, [props.recoveryMode]);
@@ -157,16 +158,16 @@ export default function ProfileView(props: Props) {
 
   return <>
     <div className="page-intro profile-intro">
-      {section !== "overview" && <button className="outline-button" type="button" onClick={() => setSection("overview")}><ArrowLeft size={16} /> Kembali ke Profil</button>}
+      {section !== "overview" && <button className="outline-button" type="button" onClick={() => { if ((dirty || targetDirty) && !window.confirm("Perubahan belum disimpan. Kembali dan batalkan perubahan?")) return; setDraft(props.profile); setTargetDraft(active?.calories ?? props.profile.calorieTarget); setTargetNote(""); setTargetSource("manual"); setSection("overview"); }}><ArrowLeft size={16} /> Kembali ke Profil</button>}
       <span className="eyebrow">TENTANG KAMU</span>
       <h1>{section === "overview" ? "Profil" : section === "basic" ? "Data dasar" : section === "target" ? "Target kalori" : section === "weight" ? "Riwayat berat" : section === "updates" ? "Pembaruan aplikasi" : "Akun & privasi"}</h1>
       <p>{section === "overview" ? "Pilih bagian yang ingin kamu lihat atau ubah." : "Perubahan disimpan saat kamu menekan tombol simpan."}</p>
     </div>
     {section === "overview" && <div className="profile-menu">
-      <button className="profile-menu-card" type="button" onClick={() => setSection("basic")}><span className="card-kicker">PROFIL</span><strong>Data dasar</strong><small>{props.profile.age || "—"} tahun · {props.profile.height || "—"} cm · {(latestWeight?.weight ?? props.profile.weight) || "—"} kg</small><span className="profile-menu-link">Lihat data dasar <ArrowRight size={15} /></span></button>
-      <button className="profile-menu-card" type="button" onClick={() => setSection("target")}><span className="card-kicker">PANDUAN HARIAN</span><strong>Target kalori</strong><small>{fmt(active?.calories ?? props.profile.calorieTarget)} kkal/hari · {active?.source === "calculated" ? "Dari rumus" : "Manual"}</small><span className="profile-menu-link">Lihat target & riwayat <ArrowRight size={15} /></span></button>
-      <button className="profile-menu-card" type="button" onClick={() => setSection("weight")}><span className="card-kicker">PROGRES</span><strong>Riwayat berat</strong><small>{latestWeight ? `${latestWeight.weight} kg · ${new Date(`${latestWeight.date}T12:00:00`).toLocaleDateString("id-ID", { dateStyle: "medium" })}` : "Belum ada catatan berat"}</small><span className="profile-menu-link">Lihat riwayat berat <ArrowRight size={15} /></span></button>
-      <button className="profile-menu-card" type="button" onClick={() => setSection("account")}><span className="card-kicker">PENGATURAN</span><strong>Akun & privasi</strong><small>{props.accountId ? props.accountEmail : "Mode demo di perangkat ini"}</small><span className="profile-menu-link">Lihat pengaturan <ArrowRight size={15} /></span></button>
+      <button className="profile-menu-card" type="button" onClick={() => setSection("basic")}><span className="fc-profile-icon"><UserRound size={22} /></span><span className="card-kicker">PROFIL</span><strong>Data dasar</strong><small>{props.profile.age || "—"} tahun · {props.profile.height || "—"} cm · {(latestWeight?.weight ?? props.profile.weight) || "—"} kg</small><span className="profile-menu-link">Lihat data dasar <ArrowRight size={15} /></span></button>
+      <button className="profile-menu-card" type="button" onClick={() => setSection("target")}><span className="fc-profile-icon"><Target size={22} /></span><span className="card-kicker">PANDUAN HARIAN</span><strong>Target kalori</strong><small>{fmt(active?.calories ?? props.profile.calorieTarget)} kkal/hari · {active?.source === "calculated" ? "Dari rumus" : "Manual"}</small><span className="profile-menu-link">Lihat target & riwayat <ArrowRight size={15} /></span></button>
+      <button className="profile-menu-card" type="button" onClick={() => setSection("weight")}><span className="fc-profile-icon"><Scale size={22} /></span><span className="card-kicker">PROGRES</span><strong>Riwayat berat</strong><small>{latestWeight ? `${latestWeight.weight} kg · ${new Date(`${latestWeight.date}T12:00:00`).toLocaleDateString("id-ID", { dateStyle: "medium" })}` : "Belum ada catatan berat"}</small><span className="profile-menu-link">Lihat riwayat berat <ArrowRight size={15} /></span></button>
+      <button className="profile-menu-card" type="button" onClick={() => setSection("account")}><span className="fc-profile-icon"><ShieldCheck size={22} /></span><span className="card-kicker">PENGATURAN</span><strong>Akun & privasi</strong><small>{props.accountId ? props.accountEmail : "Mode demo di perangkat ini"}</small><span className="profile-menu-link">Lihat pengaturan <ArrowRight size={15} /></span></button>
     </div>}
     <div className="profile-grid profile-detail-grid" hidden={section !== "basic" && section !== "target"}>
       <section className="panel" hidden={section !== "basic"}>
@@ -187,7 +188,7 @@ export default function ProfileView(props: Props) {
         </form>
       </section>
       <section className="panel target-panel" hidden={section !== "target"}>
-        <div className="card-top"><div><span className="card-kicker">PANDUAN HARIAN</span><h2>Target kalorimu</h2></div><span className="card-soft-icon"><Settings2 size={19} /></span></div>
+        <div className="card-top"><div><span className="fc-profile-icon"><Target size={22} /></span><span className="card-kicker">PANDUAN HARIAN</span><h2>Target kalorimu</h2></div><span className="card-soft-icon"><Settings2 size={19} /></span></div>
         <div className="suggested-target"><span>Target aktif</span><strong>{fmt(active?.calories ?? props.profile.calorieTarget)} <small>kkal/hari</small></strong></div>
         <div className="suggested-target"><span>Perkiraan dari profil {dirty ? "(belum disimpan)" : ""}</span><strong>{estimate ? fmt(estimate.calories) : "Tidak tersedia"} {estimate && <small>kkal/hari</small>}</strong></div>
         {!estimate && <p className="microcopy">Pilih koefisien rumus untuk perkiraan otomatis, atau isi target manual.</p>}

@@ -22,10 +22,10 @@ export default function PhotoSources(props: Props) {
       <label className="photo-source"><input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" disabled={props.analyzing} onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; props.onCamera(file); }} /><Camera size={22} /><strong>Ambil foto</strong><small>Buka kamera perangkat</small></label>
       <label className="photo-source"><input type="file" accept="image/jpeg,image/png,image/webp" disabled={props.analyzing} onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; props.onGallery(file); }} /><Upload size={22} /><strong>{props.galleryFile ? "Ganti foto dari galeri" : "Pilih dari galeri"}</strong><small>Gunakan foto yang tersimpan</small></label>
     </div>
-    {props.galleryFile && <div className="gallery-preview">
-      {props.galleryPreview && <Image src={props.galleryPreview} alt="Pratinjau foto makanan dari galeri" width={480} height={360} unoptimized onError={props.onPreviewError} />}
-      <div><strong>{props.galleryFile.name}</strong><small>Foto hanya dipakai untuk analisis dan tidak disimpan sebagai catatan.</small></div>
-      <div className="gallery-actions"><button className="primary-button" type="button" disabled={props.analyzing || props.analysisReady} onClick={props.onAnalyze}>{props.analyzing ? "Menganalisis..." : props.analysisReady ? "Analisis selesai" : "Analisis foto"}</button><button className="outline-button" type="button" disabled={props.analyzing} onClick={props.onCancel}>Batalkan</button></div>
+    {props.galleryPreview && <div className="gallery-preview">
+      {props.galleryPreview && <Image src={props.galleryPreview} alt="Pratinjau foto makanan" width={480} height={360} unoptimized onError={props.onPreviewError} />}
+      <div><strong>{props.photoName}</strong><small>Foto hanya dipakai untuk analisis dan tidak disimpan sebagai catatan.</small></div>
+      {props.galleryFile && <div className="gallery-actions"><button className="primary-button" type="button" disabled={props.analyzing || props.analysisReady} onClick={props.onAnalyze}>{props.analyzing ? "Menganalisis..." : props.analysisReady ? "Analisis selesai" : "Analisis foto"}</button><button className="outline-button" type="button" disabled={props.analyzing} onClick={props.onCancel}>Batalkan</button></div>}
     </div>}
     <p className="microcopy" aria-live="polite">{props.analyzing ? "Sedang melihat foto..." : props.photoName ? `Foto dipilih: ${props.photoName}` : "JPEG, PNG, atau WebP · maksimal 8 MB"}</p>
     <p className="microcopy">Jika akses kamera atau galeri ditolak, periksa izin perangkat atau gunakan pencarian manual.</p>
