@@ -71,7 +71,7 @@ export function weeklyRangeLabel(start: string): string {
 
 // The app has no timezone setting yet. Asia/Makassar is UTC+08:00 year-round.
 // A target becomes comparable on a date when it existed before that local date ended.
-function targetOnDate(date: string, targets: TargetRecord[]): number | null {
+export function targetOnDate(date: string, targets: TargetRecord[]): number | null {
   const [year, month, day] = dateParts(date);
   const nextMidnightUtc = Date.UTC(year, month - 1, day + 1, -8);
   const active = targets.filter((entry) => {

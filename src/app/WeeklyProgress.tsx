@@ -4,8 +4,9 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useState, type FormEvent } from "react";
 import { Activity, ChevronLeft, ChevronRight, TrendingUp, X } from "lucide-react";
-import type { WeightEntry } from "@/lib/food";
+import type { Profile, WeightEntry } from "@/lib/food";
 import { formatWeeklyDate, todayInTimeZone, weeklyRangeLabel, type Macro, type WeeklySummary } from "@/lib/weekly-progress";
+import ProgressReportCards from "./ProgressReportCards";
 
 type Props = {
   summary: WeeklySummary;
@@ -13,6 +14,8 @@ type Props = {
   loading: boolean;
   error: boolean;
   allWeights: WeightEntry[];
+  profile: Profile;
+  accountId: string | null;
   onPrevious: () => void;
   onNext: () => void;
   onOpenDate: (date: string) => void;
@@ -24,7 +27,7 @@ type Props = {
 const whole = (value: number) => Math.round(value).toLocaleString("id-ID");
 const decimal = (value: number) => value.toLocaleString("id-ID", { maximumFractionDigits: 1 });
 
-export default function WeeklyProgress({ summary, currentWeek, loading, error, allWeights, onPrevious, onNext, onOpenDate, onRetry, onSaveWeight, onRemoveWeight }: Props) {
+export default function WeeklyProgress({ summary, currentWeek, loading, error, allWeights, profile, accountId, onPrevious, onNext, onOpenDate, onRetry, onSaveWeight, onRemoveWeight }: Props) {
   const [weightInput, setWeightInput] = useState("");
   const [savingWeight, setSavingWeight] = useState(false);
   const maxScale = Math.max(1, ...summary.days.flatMap((day) => [day.calories ?? 0, day.target ?? 0]));
@@ -39,11 +42,12 @@ export default function WeeklyProgress({ summary, currentWeek, loading, error, a
   }
 
   return <>
-    <div className="page-intro"><span className="eyebrow">PROGRESMU</span><h1>Ringkasan mingguan</h1><p>Ringkasan dari catatan yang tersedia, untuk dilihat kembali tanpa penilaian.</p></div>
+    <div className="page-intro"><span className="eyebrow">PROGRESMU</span><h1>Laporan progres</h1><p>Berat badan, kalori, dan catatan mingguanmu.</p></div>
     <div className="weekly-nav" aria-label="Navigasi minggu"><Button variant="ghost" size="icon" className="icon-button" onClick={onPrevious} aria-label="Minggu sebelumnya"><ChevronLeft size={20} /></Button><div aria-live="polite"><strong>{weeklyRangeLabel(summary.start)}</strong><span>Senin–Minggu · Asia/Makassar</span></div><Button variant="ghost" size="icon" className="icon-button" onClick={onNext} aria-label="Minggu berikutnya" disabled={currentWeek}><ChevronRight size={20} /></Button></div>
     {loading && <div className="weekly-state" role="status">Memuat catatan akun untuk ringkasan minggu ini…</div>}
     {error && <div className="weekly-state" role="alert">Catatan akun belum dapat dimuat. <button className="text-button" onClick={onRetry}>Coba lagi</button></div>}
     {!loading && !error && <>
+      <ProgressReportCards key={accountId ?? "local"} profile={profile} weights={allWeights} summary={summary} accountId={accountId} />
       <Card className="panel weekly-overview" aria-labelledby="weekly-overview-title"><div className="card-top"><div><span className="card-kicker">{weeklyRangeLabel(summary.start).toUpperCase()}</span><h2 id="weekly-overview-title">Gambaran minggu ini</h2></div><span className="card-soft-icon"><Activity size={19} /></span></div>
         {summary.loggedDays ? <><div className="weekly-stats"><div><strong>{summary.loggedDays}<small>/7 hari</small></strong><span>hari dengan makanan tercatat</span></div><div><strong>{summary.mealCount}</strong><span>catatan makan</span></div><div><strong>{summary.averageCalories === null ? "—" : whole(summary.averageCalories)}<small> kkal</small></strong><span>rata-rata dari {summary.calorieDays} hari dengan data kalori lengkap</span></div></div><p className="weekly-context">{summary.comparableDays ? `${summary.comparableDays} hari memiliki catatan kalori lengkap dan target aktif. Di bawah: ${summary.comparisonCounts.below}, sesuai: ${summary.comparisonCounts.at}, di atas: ${summary.comparisonCounts.above}.` : "Belum ada hari dengan catatan kalori lengkap dan target historis yang dapat dibandingkan."}</p>{summary.loggedDays < 3 && <p className="weekly-limited">Data minggu ini masih terbatas ({summary.loggedDays} hari tercatat).</p>}</> : <div className="weekly-empty">Belum ada makanan tercatat pada minggu ini. Hari tanpa catatan tidak dihitung sebagai nol kalori.</div>}
       </Card>

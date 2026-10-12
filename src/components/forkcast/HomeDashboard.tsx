@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { BicepsFlexed, Camera, ChevronLeft, ChevronRight, Droplet, Leaf, Plus, UtensilsCrossed, Wheat } from "lucide-react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
@@ -7,12 +8,13 @@ import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { total, itemAmountLabel, mealTypes, type Meal, type MealType, type Profile } from "@/lib/food";
-import { addCalendarDays, mondayOf } from "@/lib/weekly-progress";
+import { addCalendarDays, mondayOf, targetOnDate } from "@/lib/weekly-progress";
+import type { TargetRecord } from "@/lib/target";
 import RecentScanCard from "./RecentScanCard";
 
 const number = (value: number | null) => value === null ? "—" : Math.round(value).toLocaleString("id-ID");
 const localDate = (date: string) => new Date(`${date}T12:00:00`);
-type Props = { date: string; today: string; profile: Profile; target: number; meals: Meal[]; account: boolean; scan?: { status: "processing" | "ready" | "error"; preview: string; fileName: string; itemCount: number; onOpen: () => void; onRetry: () => void; onDismiss: () => void }; onDate: (date: string) => void; onAdd: (type?: MealType) => void; onPhoto: () => void; onHistory: () => void; onMeal: (meal: Meal) => void };
+type Props = { date: string; today: string; profile: Profile; target: number; meals: Meal[]; calendarMeals: Meal[]; targets: TargetRecord[]; account: boolean; scan?: { status: "processing" | "ready" | "error"; preview: string; fileName: string; itemCount: number; onOpen: () => void; onRetry: () => void; onDismiss: () => void }; onDate: (date: string) => void; onAdd: (type?: MealType) => void; onPhoto: () => void; onHistory: () => void; onMeal: (meal: Meal) => void };
 
 export function MealEntry({ meal, onClick }: { meal: Meal; onClick: () => void }) {
   const amount = meal.items.length === 1 ? itemAmountLabel(meal.items[0]) : String(meal.items.length) + " komponen";
@@ -26,6 +28,12 @@ export function MealEntry({ meal, onClick }: { meal: Meal; onClick: () => void }
   </Card>;
 }
 export default function HomeDashboard(props: Props) {
+  const weekRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const strip = weekRef.current;
+    const selected = Array.from(strip?.querySelectorAll<HTMLButtonElement>("button[data-date]") ?? []).find((button) => button.dataset.date === props.date);
+    if (strip && selected) strip.scrollTo({ left: selected.offsetLeft - strip.offsetLeft - strip.clientWidth / 2 + selected.clientWidth / 2, behavior: "smooth" });
+  }, [props.date]);
   const nutrition = props.meals.length ? total(props.meals.flatMap((meal) => meal.items)) : { calories: null, protein: null, carbs: null, fat: null };
   const percent = nutrition.calories === null ? 0 : Math.min(100, nutrition.calories / Math.max(1, props.target) * 100);
   const remaining = nutrition.calories === null ? null : props.target - nutrition.calories;
@@ -38,7 +46,7 @@ export default function HomeDashboard(props: Props) {
   return <div className="fc-home">
     <div className="fc-greeting"><div><h1>Halo{props.profile.name ? `, ${props.profile.name}` : ""}!</h1><p>Makan enak, catat dengan tenang <Leaf size={14} /></p></div><Badge variant="secondary">{props.account ? "Tersinkron" : "Demo lokal"}</Badge></div>
     <div className="fc-date-heading"><span>{localDate(props.date).toLocaleDateString("id-ID", { month: "long", year: "numeric" })}</span><div><Button variant="ghost" size="icon" aria-label="Minggu sebelumnya" onClick={() => props.onDate(addCalendarDays(props.date, -7))}><ChevronLeft /></Button><Button variant="ghost" size="icon" aria-label="Minggu berikutnya" disabled={addCalendarDays(week, 7) > props.today} onClick={() => props.onDate(addCalendarDays(props.date, 7) > props.today ? props.today : addCalendarDays(props.date, 7))}><ChevronRight /></Button></div></div>
-    <div className="fc-week" aria-label="Pilih tanggal">{Array.from({ length: 7 }, (_, index) => { const date = addCalendarDays(week, index); return <button key={date} aria-pressed={date === props.date} disabled={date > props.today} className={date === props.date ? "selected" : ""} onClick={() => props.onDate(date)}><span>{localDate(date).toLocaleDateString("id-ID", { weekday: "short" })}</span><strong>{localDate(date).getDate()}</strong><i className={date === props.today ? "is-today" : ""} /></button>; })}</div>
+    <div className="fc-week" ref={weekRef} aria-label="Pilih tanggal">{Array.from({ length: 14 }, (_, index) => { const date = addCalendarDays(week, index - 7); const entries = props.calendarMeals.filter((meal) => meal.date === date); const calories = entries.length ? total(entries.flatMap((meal) => meal.items)).calories : null; const dayTarget = targetOnDate(date, props.targets) ?? props.target; const progress = calories === null ? 0 : Math.min(100, Math.max(0, calories / Math.max(1, dayTarget) * 100)); const logged = entries.length > 0; return <button key={date} data-date={date} type="button" aria-pressed={date === props.date} aria-label={`${localDate(date).toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" })}: ${logged ? `${entries.length} catatan makan, ${calories === null ? "kalori belum lengkap" : `${Math.round(progress)}% dari target`}` : "belum ada makanan tercatat"}`} disabled={date > props.today} className={`${date === props.date ? "selected " : ""}${logged ? "is-logged" : "is-empty"}`} onClick={() => props.onDate(date)}><span>{localDate(date).toLocaleDateString("id-ID", { weekday: "short" })}</span><span className="fc-day-ring" style={{ "--day-progress": `${progress}%` } as React.CSSProperties}><strong>{localDate(date).getDate()}</strong></span><i className={logged ? "has-entry" : date === props.today ? "is-today" : ""} /></button>; })}</div>
     <Card className="fc-calorie-summary"><div className="fc-calorie-ring" style={{ "--percent": `${percent}%` } as React.CSSProperties}><div><strong>{number(nutrition.calories)}</strong><span>kkal</span></div></div><div className="fc-calorie-copy"><h2>{props.date === props.today ? "Kalori hari ini" : "Kalori tercatat"}</h2><p>dari {number(props.target)} kkal</p><Progress value={percent} aria-label="Kalori terhadap target" /><small>{remaining === null ? "Belum ada catatan" : remaining >= 0 ? `${number(remaining)} kkal hingga target` : `${number(-remaining)} kkal di atas target`}</small></div></Card>
     <div className="fc-macros">{macros.map(({ label, value, target, Icon, tone }) => <Card className={`fc-macro fc-${tone}`} key={label}><span className="fc-macro-icon"><Icon size={17} /></span><h3>{label}</h3><strong>{number(value)} <small>g</small></strong><p>dari {number(target)} g</p><Progress value={value === null ? 0 : Math.min(100, value / Math.max(1, target) * 100)} aria-label={`${label} terhadap target`} /></Card>)}</div>
     <div className="fc-section-title"><h2>Makanan {props.date === props.today ? "hari ini" : "tercatat"}</h2><Button variant="ghost" onClick={props.onHistory}>Lihat semua <ChevronRight size={15} /></Button></div>
