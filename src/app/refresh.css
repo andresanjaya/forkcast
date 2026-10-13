@@ -74,7 +74,7 @@ body{background:#f6faf7;color:var(--ink);font-family:'DM Sans',sans-serif}button
 .fc-meal-detail-page,.fc-scan-result-page{display:flex;flex-direction:column;overflow:hidden}
 .fc-meal-detail-page .fc-meal-detail-hero,.fc-scan-result-page .fc-scan-detail-hero{position:relative;inset:auto;flex:0 0 38dvh;min-height:0;height:auto;aspect-ratio:auto}
 .fc-meal-detail-page .fc-photo-header{height:100%;min-height:0;aspect-ratio:auto}
-.fc-meal-detail-page .fc-photo-header img{width:100%!important;height:100%!important;object-fit:cover!important;object-position:center}
+.fc-meal-detail-page .fc-meal-detail-hero .fc-photo-header.has-photo img{width:100%!important;height:100%!important;object-fit:cover!important;object-position:center}
 .fc-scan-result-page .fc-scan-detail-hero>img{object-fit:cover;object-position:center}
 .fc-meal-detail-page .fc-scan-detail-sheet,.fc-scan-result-page .fc-scan-detail-sheet{position:relative;inset:auto;flex:1;min-height:0;margin-top:-24px;padding-bottom:0}
 .fc-meal-detail-page .fc-scan-detail-scroll,.fc-scan-result-page .fc-scan-detail-scroll{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding-bottom:28px}
