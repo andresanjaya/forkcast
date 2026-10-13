@@ -280,3 +280,24 @@ body{background:#e8eeea}
 .fc-average-chart small{height:18px;color:#849088;font-size:10px}
 .fc-average-calories>p{margin-top:12px}
 @media(max-width:360px){.fc-report-card{padding:17px}.fc-weight-changes>div{grid-template-columns:56px auto 1fr}.fc-weight-changes small{font-size:9px}.fc-average-chart{gap:5px}}
+
+/* Home header, persisted uploads, and a non-stretching calorie ring on iOS. */
+.fc-streak{display:inline-flex;min-width:53px;height:35px;align-items:center;justify-content:center;gap:4px;padding:0 10px;border:1px solid #e4e7e4;border-radius:999px;background:#f5f6f4;color:#8d9890;font-size:13px}
+.fc-streak.is-active{border-color:#f6e4d3;background:#fff7ee;color:#e18b38}
+.fc-streak strong{color:#24382c;font-size:13px}
+.fc-greeting{justify-content:flex-start}
+.fc-calorie-ring{width:126px;height:126px;min-width:126px;min-height:126px;flex:0 0 126px;aspect-ratio:1/1;box-sizing:border-box}
+.fc-calorie-ring>div{width:100%;height:100%;min-width:0;min-height:0;aspect-ratio:1/1}
+.fc-recent-scan-section{margin:20px 0 0}
+.fc-recent-scan-section .fc-section-title{margin-top:0}
+.fc-saved-upload-card{margin-top:9px}
+.fc-saved-upload-card .fc-scan-card-button{width:100%;text-align:left}
+.fc-saved-upload-card .fc-scan-card-image{display:grid;place-items:center;color:#66816f}
+@media(max-width:760px){.fc-calorie-ring{width:110px;height:110px;min-width:110px;min-height:110px;flex-basis:110px}}
+@media(max-width:350px){.fc-calorie-ring{width:94px;height:94px;min-width:94px;min-height:94px;flex-basis:94px}}
+
+/* The editor scroll area supplies the only page gutter for catalog list and detail. */
+.editor-page .food-library{width:100%;margin:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none}
+.editor-page .food-library .food-search-input{margin-top:2px}
+.editor-page .food-library .library-back{margin-top:2px}
+.editor-page .food-library .library-add{margin-bottom:6px}

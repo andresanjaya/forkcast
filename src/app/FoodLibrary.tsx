@@ -36,7 +36,7 @@ export default function FoodLibrary(props: Props) {
     const valid = Number.isFinite(item.quantity) && item.quantity > 0 && Number.isFinite(item.grams) && item.grams > 0 && item.grams <= 10000
       && Object.values(item.per100g).every((value) => Number.isFinite(value) && value >= 0);
     const nutrition = valid ? nutrientsFor(item) : null;
-    return <section className="food-library panel" aria-label="Detail makanan">
+    return <section className="food-library" aria-label="Detail makanan">
       <button className="text-button library-back" type="button" onClick={back}><ArrowLeft size={16} /> Kembali ke hasil</button>
       <FoodPhotoHeader name={item.name} /><span className="card-kicker">{food?.category ?? "CATATANMU"}</span>
       <h3 ref={detailRef} tabIndex={-1}>{item.name}</h3>
@@ -53,7 +53,7 @@ export default function FoodLibrary(props: Props) {
     </section>;
   }
 
-  return <section className="food-library panel" aria-label="Katalog makanan Indonesia">
+  return <section className="food-library" aria-label="Katalog makanan Indonesia">
     <label className="food-search-input"><Search size={18} /><span className="sr-only">Cari nama makanan atau nama lain</span><input ref={searchRef} type="search" value={props.query} onChange={(event) => props.onQuery(event.target.value)} placeholder="Cari nasi, tempe, pepaya..." autoComplete="off" /></label>
     <div className="library-list-heading"><h3>{props.query.trim() ? "Hasil pencarian" : "Saran makanan"}</h3><span role="status">{results.length}</span></div>
     {results.length ? <div className="library-results">{results.map((food) => {

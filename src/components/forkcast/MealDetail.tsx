@@ -14,7 +14,7 @@ export default function MealDetail({ meal, preview, onBack, onRepeat, onSaveComb
 
   return <main className="fc-scan-detail-page fc-meal-detail-page">
     <div className="fc-scan-detail-hero fc-meal-detail-hero">
-      <FoodPhotoHeader src={preview ?? meal.photoPreview} name={meal.title} />
+      <FoodPhotoHeader src={meal.photoPreview ?? preview} name={meal.title} />
       <div className="fc-scan-detail-shade" />
       <Button variant="secondary" size="icon" className="fc-scan-detail-back" aria-label="Kembali" onClick={onBack}><ArrowLeft /></Button>
       <span className="fc-scan-detail-top-title">Detail makanan</span>

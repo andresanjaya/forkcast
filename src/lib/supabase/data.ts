@@ -3,6 +3,7 @@ import { defaultProfile, type Meal, type MealItem, type Profile, type SavedMeal,
 import type { TargetRecord } from "@/lib/target";
 import type { PackagedProduct, UserProduct } from "@/lib/packaged-food";
 import { savedMealError, type FoodCorrection } from "@/lib/meal-memory";
+import { MEAL_PHOTO_BUCKET } from "@/lib/meal-photos";
 
 type Row = Record<string, unknown>;
 const numeric = (value: unknown) => Number(value ?? 0);
@@ -46,7 +47,15 @@ export async function loadAccountData(client: SupabaseClient, userId: string) {
   const meals: Meal[] = mealRows.map((row) => ({
     id: String(row.id), date: String(row.local_date), eatenAt: String(row.eaten_at), type: row.meal_type as Meal["type"],
     title: String(row.title), method: row.entry_method as Meal["method"], createdAt: String(row.created_at), items: itemsByMeal.get(String(row.id)) ?? [],
+    ...(row.photo_path ? { photoPath: String(row.photo_path), photoBytes: numeric(row.photo_bytes) } : {}),
   }));
+  const photoPaths = meals.map((meal) => meal.photoPath).filter((path): path is string => Boolean(path));
+  if (photoPaths.length) {
+    const { data: links } = await client.storage.from(MEAL_PHOTO_BUCKET).createSignedUrls(photoPaths, 24 * 60 * 60);
+    const previewByPath = new Map<string, string>();
+    for (const link of links ?? []) if (link.path && link.signedUrl) previewByPath.set(link.path, link.signedUrl);
+    for (const meal of meals) if (meal.photoPath) meal.photoPreview = previewByPath.get(meal.photoPath);
+  }
   const savedMeals: SavedMeal[] = ((savedResult.data ?? []) as Row[]).map((row) => ({
     id: String(row.id), title: String(row.title), note: String(row.note ?? ""),
     category: row.category as SavedMeal["category"], items: Array.isArray(row.items) ? row.items as MealItem[] : [],
@@ -88,10 +97,24 @@ export async function saveCalorieTarget(client: SupabaseClient, record: TargetRe
   if (error) throw error;
 }
 
+export async function uploadMealPhoto(client: SupabaseClient, userId: string, mealId: string, photo: Blob, upsert = false): Promise<string> {
+  const path = `${userId}/${mealId}.jpg`;
+  const { error } = await client.storage.from(MEAL_PHOTO_BUCKET).upload(path, photo, { contentType: "image/jpeg", upsert, cacheControl: "86400" });
+  if (error) throw error;
+  return path;
+}
+
+export async function removeMealPhoto(client: SupabaseClient, path: string): Promise<void> {
+  const { error } = await client.storage.from(MEAL_PHOTO_BUCKET).remove([path]);
+  if (error) throw error;
+}
+
+
 export async function insertMeal(client: SupabaseClient, userId: string, meal: Meal) {
   const { error: mealError } = await client.from("meals").insert({
     id: meal.id, user_id: userId, eaten_at: meal.eatenAt ?? meal.createdAt, local_date: meal.date,
     meal_type: meal.type, title: meal.title, entry_method: meal.method, created_at: meal.createdAt,
+    ...(meal.photoPath ? { photo_path: meal.photoPath, photo_mime: "image/jpeg", photo_bytes: meal.photoBytes } : {}),
   });
   if (mealError) throw mealError;
   const { error: itemsError } = await client.from("meal_items").insert(meal.items.map((item, position) => ({
@@ -112,6 +135,7 @@ export async function importDemoMeal(client: SupabaseClient, userId: string, mea
   const { error: mealError } = await client.from("meals").upsert({
     id: meal.id, user_id: userId, eaten_at: meal.eatenAt ?? meal.createdAt, local_date: meal.date,
     meal_type: meal.type, title: meal.title, entry_method: meal.method, created_at: meal.createdAt,
+    ...(meal.photoPath ? { photo_path: meal.photoPath, photo_mime: "image/jpeg", photo_bytes: meal.photoBytes } : {}),
   }, { onConflict: "id" });
   if (mealError) throw mealError;
   const { error: itemsError } = await client.from("meal_items").upsert(meal.items.map((item, position) => ({
@@ -188,6 +212,15 @@ export async function deleteAllAccountData(client: SupabaseClient, userId: strin
   for (const table of ["meals", "saved_meals", "food_corrections", "user_products", "weight_entries", "calorie_target_history", "profiles"]) {
     const { error } = await client.from(table).delete().eq("user_id", userId);
     if (error && !(table === "user_products" && optionalTableMissing(error))) throw error;
+  }
+  while (true) {
+    const { data, error } = await client.storage.from(MEAL_PHOTO_BUCKET).list(userId, { limit: 100 });
+    if (error?.status === 404) break;
+    if (error) throw error;
+    const paths = (data ?? []).filter((entry) => entry.name && entry.name !== ".emptyFolderPlaceholder").map((entry) => `${userId}/${entry.name}`);
+    if (!paths.length) break;
+    const { error: removeError } = await client.storage.from(MEAL_PHOTO_BUCKET).remove(paths);
+    if (removeError) throw removeError;
   }
 }
 export async function saveUserProduct(client: SupabaseClient, userId: string, product: PackagedProduct) {

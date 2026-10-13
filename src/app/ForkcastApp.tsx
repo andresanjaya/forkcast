@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { getSupabaseBrowser } from "@/lib/supabase/browser";
-import { deleteAllAccountData, deleteMeal as deleteRemoteMeal, deleteSavedMeal as deleteRemoteSavedMeal, deleteWeight as deleteRemoteWeight, importDemoMeal, importDemoSavedMeal, importDemoWeights, insertFoodCorrections, insertMeal as insertRemoteMeal, insertSavedMeal, loadAccountData, saveCalorieTarget, saveProfileWithWeight, saveUserProduct, updateSavedMeal } from "@/lib/supabase/data";
+import { deleteAllAccountData, deleteMeal as deleteRemoteMeal, deleteSavedMeal as deleteRemoteSavedMeal, deleteWeight as deleteRemoteWeight, importDemoMeal, importDemoSavedMeal, importDemoWeights, insertFoodCorrections, insertMeal as insertRemoteMeal, insertSavedMeal, loadAccountData, removeMealPhoto, saveCalorieTarget, saveProfileWithWeight, saveUserProduct, updateSavedMeal, uploadMealPhoto } from "@/lib/supabase/data";
 import ProfileView from "./ProfileView";
 import SavedMealLibrary from "./SavedMealLibrary";
 import SavedMealForm from "./SavedMealForm";
@@ -25,10 +25,11 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { copyMealItems, correctionsFromReview, frequentFoodShortcuts, recentFoodShortcuts, savedMealError, type FoodCorrection } from "@/lib/meal-memory";
 import { photoReviewState } from "@/lib/photo-review";
+import { clearLocalMealPhotos, compressMealPhoto, deleteLocalMealPhoto, getLocalMealPhoto, MEAL_PHOTO_BUCKET, saveLocalMealPhoto } from "@/lib/meal-photos";
 import type { PackagedProduct, UserProduct } from "@/lib/packaged-food";
-import { addCalendarDays, mondayOf, summarizeWeek, todayInTimeZone } from "@/lib/weekly-progress";
+import { addCalendarDays, mealLoggingStreak, mondayOf, summarizeWeek, todayInTimeZone } from "@/lib/weekly-progress";
 import { activeTarget, addTargetRecord, profileError, putWeightRecord, validTarget, type TargetRecord } from "@/lib/target";
-import { ArrowLeft, ArrowRight, Barcode, Bookmark, Camera, Check, ClipboardList, Home, Leaf, MoreHorizontal, Plus, Search, Sparkles, Trash2, TrendingUp, UserRound, UtensilsCrossed, WifiOff, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Barcode, Bookmark, Camera, Check, ClipboardList, Flame, Home, Leaf, MoreHorizontal, Plus, Search, Sparkles, Trash2, TrendingUp, UserRound, UtensilsCrossed, WifiOff, X } from "lucide-react";
 import { allFoods, changeServing, defaultProfile, editMealItem, foods, itemAmountLabel, itemFromFood, matchCandidateFood, mealTypes, nutrientsFor, total, type Food, type Meal, type MealItem, type MealType, type Profile, type SavedMeal, type WeightEntry } from "@/lib/food";
 
 type Tab = "beranda" | "riwayat" | "progres" | "profil";
@@ -50,23 +51,15 @@ function readMealPhotoCache(): Record<string, string> {
 function writeMealPhotoCache(previews: Record<string, string>) {
   try { localStorage.setItem(PHOTO_CACHE, JSON.stringify(Object.fromEntries(Object.entries(previews).slice(-24)))); } catch { }
 }
-async function createMealPhotoPreview(file: File): Promise<string> {
-  const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
-  const scale = Math.min(1, 480 / Math.max(bitmap.width, bitmap.height));
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-  canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-  const context = canvas.getContext("2d");
-  if (!context) { bitmap.close(); throw new Error("Pratinjau foto tidak dapat dibuat."); }
-  context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  bitmap.close();
-  const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((value) => value ? resolve(value) : reject(new Error("Pratinjau foto tidak dapat dibuat.")), "image/jpeg", .68));
-  return await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
-    reader.onerror = () => reject(new Error("Pratinjau foto tidak dapat dibaca."));
-    reader.readAsDataURL(blob);
-  });
+async function hydrateLocalMealPhotos(records: Meal[], cached: Record<string, string>): Promise<Meal[]> {
+  return Promise.all(records.map(async (meal) => {
+    let blob = await getLocalMealPhoto(meal.id).catch(() => null);
+    if (!blob && cached[meal.id]?.startsWith("data:image/")) {
+      blob = await fetch(cached[meal.id]).then((response) => response.blob()).catch(() => null);
+      if (blob) await saveLocalMealPhoto(meal.id, blob).catch(() => {});
+    }
+    return { ...meal, photoPreview: blob ? URL.createObjectURL(blob) : cached[meal.id] ?? meal.photoPreview };
+  }));
 }
 export default function HomePage({ startInEditor = false }: { startInEditor?: boolean }) {
   const [ready, setReady] = useState(false);
@@ -81,11 +74,14 @@ export default function HomePage({ startInEditor = false }: { startInEditor?: bo
   const [cameraInitialMode, setCameraInitialMode] = useState<CameraMode>("food");
   const [initialBarcode, setInitialBarcode] = useState<string | null>(null);
   const galleryPickerRef = useRef<HTMLInputElement>(null);
+  const photoHydrationEpoch = useRef(0);
   const [profileInitialSection, setProfileInitialSection] = useState<"overview" | "account">("overview");
   const [tab, setTab] = useState<Tab>("beranda");
   const profileDirtyRef = useRef(false);
   const [weekStart, setWeekStart] = useState(() => mondayOf(todayInTimeZone()));
   const [date, setDate] = useState(today);
+  const [currentDay, setCurrentDay] = useState(today);
+  useEffect(() => { const interval = window.setInterval(() => setCurrentDay(today()), 60_000); return () => window.clearInterval(interval); }, []);
   const [profile, setProfile] = useState<Profile>(defaultProfile);
   const [meals, setMeals] = useState<Meal[]>([]);
   const [mealPhotoPreviews, setMealPhotoPreviews] = useState<Record<string, string>>({});
@@ -140,6 +136,20 @@ export default function HomePage({ startInEditor = false }: { startInEditor?: bo
   const [installPrompt, setInstallPrompt] = useState<{ prompt: () => Promise<void> } | null>(null);
   const [message, setMessage] = useState("");
   const [accountId, setAccountId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!accountId || !viewMeal?.photoPath) return;
+    const client = getSupabaseBrowser();
+    if (!client) return;
+    const mealId = viewMeal.id;
+    let cancelled = false;
+    void client.storage.from(MEAL_PHOTO_BUCKET).createSignedUrl(viewMeal.photoPath, 24 * 60 * 60).then(({ data }) => {
+      const signedUrl = data?.signedUrl;
+      if (cancelled || !signedUrl) return;
+      setViewMeal((current) => current?.id === mealId ? { ...current, photoPreview: signedUrl } : current);
+      setMeals((current) => current.map((meal) => meal.id === mealId ? { ...meal, photoPreview: signedUrl } : meal));
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [accountId, viewMeal?.id, viewMeal?.photoPath]);
   const [accountEmail, setAccountEmail] = useState("");
   const [storageMode, setStorageMode] = useState<"local" | "loading" | "account" | "error">("local");
   const [saving, setSaving] = useState(false);
@@ -154,7 +164,10 @@ export default function HomePage({ startInEditor = false }: { startInEditor?: bo
       if (saved) {
         const data = JSON.parse(saved);
         setProfile(data.profile ?? defaultProfile);
-        setMeals(Array.isArray(data.meals) ? data.meals.map((meal: Meal) => ({ ...meal, photoPreview: cachedPhotos[meal.id] ?? meal.photoPreview })) : []);
+        const localMeals = Array.isArray(data.meals) ? data.meals as Meal[] : [];
+        setMeals(localMeals.map((meal) => ({ ...meal, photoPreview: cachedPhotos[meal.id] ?? meal.photoPreview })));
+        const epoch = photoHydrationEpoch.current;
+        void hydrateLocalMealPhotos(localMeals, cachedPhotos).then((hydrated) => { if (photoHydrationEpoch.current === epoch) setMeals((current) => current.map((meal) => hydrated.find((entry) => entry.id === meal.id) ?? meal)); }).catch(() => {});
         setSavedMeals(Array.isArray(data.savedMeals) ? data.savedMeals : []);
         setCorrections(Array.isArray(data.corrections) ? data.corrections : []);
         setWeights(Array.isArray(data.weights) ? data.weights : []);
@@ -193,6 +206,7 @@ export default function HomePage({ startInEditor = false }: { startInEditor?: bo
     if (!client) { setAuthChecked(true); return; }
     const { data: { subscription } } = client.auth.onAuthStateChange((event, session) => {
       setAuthChecked(true);
+      photoHydrationEpoch.current += 1;
       if (event === "PASSWORD_RECOVERY") { setRecoveryMode(true); setTab("profil"); }
       if (session?.user) {
         setAccountId(session.user.id); setAccountEmail(session.user.email ?? ""); setStorageMode("loading");
@@ -202,7 +216,9 @@ export default function HomePage({ startInEditor = false }: { startInEditor?: bo
         try {
           const local = JSON.parse(localStorage.getItem(STORAGE) ?? "{}");
           const cachedPhotos = readMealPhotoCache(); setMealPhotoPreviews(cachedPhotos);
-          setProfile(local.profile ?? defaultProfile); setMeals((local.meals ?? []).map((meal: Meal) => ({ ...meal, photoPreview: cachedPhotos[meal.id] ?? meal.photoPreview }))); setSavedMeals(local.savedMeals ?? []); setCorrections(local.corrections ?? []); setWeights(local.weights ?? []); setTargets(local.targets ?? []);
+          const localMeals = (local.meals ?? []) as Meal[];
+          const epoch = photoHydrationEpoch.current;
+          setProfile(local.profile ?? defaultProfile); setMeals(localMeals.map((meal) => ({ ...meal, photoPreview: cachedPhotos[meal.id] ?? meal.photoPreview }))); void hydrateLocalMealPhotos(localMeals, cachedPhotos).then((hydrated) => { if (photoHydrationEpoch.current === epoch) setMeals((current) => current.map((meal) => hydrated.find((entry) => entry.id === meal.id) ?? meal)); }).catch(() => {}); setSavedMeals(local.savedMeals ?? []); setCorrections(local.corrections ?? []); setWeights(local.weights ?? []); setTargets(local.targets ?? []);
         } catch { setProfile(defaultProfile); setMeals([]); setSavedMeals([]); setCorrections([]); setWeights([]); setTargets([]); }
         setHasProfile(false); setCanImport(false); setRecoveryMode(false);
         setStorageMode("local");
@@ -217,7 +233,7 @@ export default function HomePage({ startInEditor = false }: { startInEditor?: bo
     if (!client) return;
     loadAccountData(client, accountId).then((data) => {
       if (cancelled) return;
-      const cachedPhotos = readMealPhotoCache(); setMealPhotoPreviews(cachedPhotos); setProfile(data.profile); setMeals(data.meals.map((meal) => ({ ...meal, photoPreview: cachedPhotos[meal.id] }))); setSavedMeals(data.savedMeals); setCorrections(data.corrections); setWeights(data.weights); setTargets(data.targets); setUserProducts(data.userProducts); setHasProfile(data.hasProfile);
+      const cachedPhotos = readMealPhotoCache(); setMealPhotoPreviews(cachedPhotos); setProfile(data.profile); setMeals(data.meals.map((meal) => ({ ...meal, photoPreview: meal.photoPreview ?? cachedPhotos[meal.id] }))); setSavedMeals(data.savedMeals); setCorrections(data.corrections); setWeights(data.weights); setTargets(data.targets); setUserProducts(data.userProducts); setHasProfile(data.hasProfile);
       try {
         const local = JSON.parse(localStorage.getItem(STORAGE) ?? "{}");
         const pending = Boolean(localStorage.getItem(`porsi-import-pending-${accountId}`));
@@ -231,6 +247,8 @@ export default function HomePage({ startInEditor = false }: { startInEditor?: bo
   const target = activeTarget(targets)?.calories ?? profile.calorieTarget;
   const filteredFoods = useMemo(() => foods.filter((food) => `${food.name} ${food.aliases.join(" ")}`.toLowerCase().includes(query.toLowerCase())).slice(0, 8), [query]);
   const recentMeals = useMemo(() => [...meals].sort((a, b) => (b.eatenAt ?? b.createdAt).localeCompare(a.eatenAt ?? a.createdAt)).slice(0, 5), [meals]);
+  const recentUploads = useMemo(() => meals.filter((meal) => meal.method === "foto").sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 3), [meals]);
+  const streak = useMemo(() => mealLoggingStreak(meals, currentDay), [meals, currentDay]);
   const recentFoods = useMemo(() => recentFoodShortcuts(meals), [meals]);
   const frequentFoods = useMemo(() => frequentFoodShortcuts(meals), [meals]);
   const photoReview = analysis ? photoReviewState(analysis.items.length, analysisSelections, ignoredCandidates, draft, candidateExtras) : null;
@@ -334,6 +352,7 @@ export default function HomePage({ startInEditor = false }: { startInEditor?: bo
     selectCandidate(index, items[0].id);
   }
   async function saveMeal() {
+    if (saving) return;
     if (!effectiveDraft.length) { setMessage("Tambahkan setidaknya satu makanan yang dihitung."); return; }
     if (analysisNeedsReview) { setMessage("Periksa semua kandidat foto dan konfirmasi sebelum menyimpan."); return; }
     if (effectiveDraft.some((item) => !item.name.trim() || item.grams <= 0 || !Number.isFinite(item.grams) || item.packaged && (!Number.isFinite(item.packaged.basis.amount) || item.packaged.basis.amount <= 0))) { setMessage("Periksa nama dan porsi makanan."); return; }
@@ -341,16 +360,24 @@ export default function HomePage({ startInEditor = false }: { startInEditor?: bo
     if (!/^\d{4}-\d{2}-\d{2}$/.test(mealDate) || !/^\d{2}:\d{2}$/.test(mealTime) || Number.isNaN(eatenAt.getTime())) { setMessage("Periksa tanggal dan waktu makan."); return; }
     const title = mealTitle.trim() || effectiveDraft.map((item) => item.name).slice(0, 2).join(" & ");
     const isPhotoScan = Boolean(analysis);
-    const photoPreview = photoFile ? await createMealPhotoPreview(photoFile).catch(() => undefined) : undefined;
-    const meal: Meal = { id: crypto.randomUUID(), date: mealDate, eatenAt: eatenAt.toISOString(), type: mealType, title, method: isPhotoScan || editor === "foto" ? "foto" : entryFromSaved ? "tersimpan" : "manual", items: cloneItems(effectiveDraft), createdAt: new Date().toISOString(), ...(photoPreview ? { photoPreview } : {}) };
+    setSaving(true);
+    let compressedPhoto: Blob | undefined;
+    try { if (photoFile) compressedPhoto = await compressMealPhoto(photoFile); }
+    catch (error) { setMessage(error instanceof Error ? error.message : "Foto tidak dapat diproses. Pilih foto lain."); setSaving(false); return; }
+    const meal: Meal = { id: crypto.randomUUID(), date: mealDate, eatenAt: eatenAt.toISOString(), type: mealType, title, method: isPhotoScan || editor === "foto" ? "foto" : entryFromSaved ? "tersimpan" : "manual", items: cloneItems(effectiveDraft), createdAt: new Date().toISOString() };
     const newCorrections = analysis ? correctionsFromReview(analysis.items, analysisSelections, analysisInitialFoodIds, analysisAliases, effectiveDraft, meal.createdAt) : [];
     let correctionFailed = false;
     let productFailed = false;
     if (accountId) {
-      if (storageMode !== "account") { setMessage("Tunggu data akun siap sebelum menyimpan."); return; }
-      const client = getSupabaseBrowser(); if (!client) return;
-      setSaving(true);
+      if (storageMode !== "account") { setMessage("Tunggu data akun siap sebelum menyimpan."); setSaving(false); return; }
+      const client = getSupabaseBrowser(); if (!client) { setSaving(false); return; }
+      let uploadedPath: string | undefined;
       try {
+        if (compressedPhoto) {
+          uploadedPath = await uploadMealPhoto(client, accountId, meal.id, compressedPhoto);
+          meal.photoPath = uploadedPath;
+          meal.photoBytes = compressedPhoto.size;
+        }
         await insertRemoteMeal(client, accountId, meal);
         if (newCorrections.length) {
           try { await insertFoodCorrections(client, accountId, newCorrections); }
@@ -361,14 +388,22 @@ export default function HomePage({ startInEditor = false }: { startInEditor?: bo
           catch { productFailed = true; }
         }
       }
-      catch { setMessage("Makanan belum tersimpan ke akun. Periksa koneksi dan coba lagi."); setSaving(false); return; }
-      setSaving(false);
+      catch {
+        if (uploadedPath) await removeMealPhoto(client, uploadedPath).catch(() => {});
+        setMessage(compressedPhoto ? "Foto atau catatan belum tersimpan ke akun. Periksa koneksi dan migrasi penyimpanan foto, lalu coba lagi." : "Makanan belum tersimpan ke akun. Periksa koneksi dan coba lagi.");
+        setSaving(false);
+        return;
+      }
+    } else if (compressedPhoto) {
+      try { await saveLocalMealPhoto(meal.id, compressedPhoto); }
+      catch { setMessage("Foto belum tersimpan di perangkat ini. Coba lagi setelah ruang penyimpanan tersedia."); setSaving(false); return; }
     }
+    if (compressedPhoto) meal.photoPreview = URL.createObjectURL(compressedPhoto);
     if (newCorrections.length && !correctionFailed) setCorrections((current) => [...newCorrections, ...current].slice(0, 200));
     if (pendingProducts.length && !productFailed) setUserProducts((current) => [...pendingProducts.map((product) => ({ id: crypto.randomUUID(), product, updatedAt: new Date().toISOString() })), ...current.filter((entry) => !pendingProducts.some((product) => product.barcode && product.barcode === entry.product.barcode))]);
     setPendingProducts([]);
     setMeals((current) => [meal, ...current]); setDate(mealDate);
-    if (photoPreview) { const nextPhotos = { ...mealPhotoPreviews, [meal.id]: photoPreview }; writeMealPhotoCache(nextPhotos); setMealPhotoPreviews(nextPhotos); }
+    setSaving(false);
     if (homeScanActive) { setViewScanDetail(false); setHomeScanActive(false); setAnalysis(null); setPhotoFile(null); setDraft([]); setTab("beranda"); }
     else { closeEditor(); setTab("beranda"); }
     setMessage(productFailed ? "Catatan tersimpan, tetapi produk pribadi belum tersimpan. Periksa koneksi." : correctionFailed ? "Makanan tersimpan, tetapi koreksi belum dapat diingat. Periksa koneksi." : "Makanan tersimpan. Kamu bisa mengubahnya kapan saja.");
@@ -420,12 +455,18 @@ export default function HomePage({ startInEditor = false }: { startInEditor?: bo
     setMessage("Kombinasi dihapus. Catatan makan lama tetap sama.");
   }
   async function removeMeal(id: string) {
+    const removed = meals.find((meal) => meal.id === id);
+    let photoCleanupFailed = false;
     if (accountId) {
       const client = getSupabaseBrowser(); if (!client || storageMode !== "account") return;
       try { await deleteRemoteMeal(client, accountId, id); } catch { setMessage("Catatan belum terhapus dari akun. Coba lagi."); return; }
+      if (removed?.photoPath) await removeMealPhoto(client, removed.photoPath).catch(() => { photoCleanupFailed = true; });
+    } else if (removed?.method === "foto" || removed?.photoPreview) {
+      try { await deleteLocalMealPhoto(id); } catch { photoCleanupFailed = true; }
     }
     setMeals((current) => current.filter((meal) => meal.id !== id));
-    setMealPhotoPreviews((current) => { const next = { ...current }; delete next[id]; writeMealPhotoCache(next); return next; }); setMessage("Catatan dihapus.");
+    if (removed?.photoPreview?.startsWith("blob:")) URL.revokeObjectURL(removed.photoPreview);
+    setMealPhotoPreviews((current) => { const next = { ...current }; delete next[id]; writeMealPhotoCache(next); return next; }); setMessage(photoCleanupFailed ? accountId ? "Catatan dihapus, tetapi berkas foto belum dapat dihapus dari penyimpanan akun." : "Catatan dihapus, tetapi berkas foto lokal belum dapat dibersihkan." : "Catatan dihapus.");
   }
   async function recordWeight(weight: number) {
     const entry = { id: weights.find((item) => item.date === today())?.id ?? crypto.randomUUID(), date: today(), weight };
@@ -495,20 +536,20 @@ export default function HomePage({ startInEditor = false }: { startInEditor?: bo
     if (!localTargets.length) { local.targets = records; localStorage.setItem(STORAGE, JSON.stringify(local)); }
     for (const record of records) await saveCalorieTarget(client, { ...record, id: importId("target", record.id) });
     const cachedMealPhotos = readMealPhotoCache();
-    const importedMealPhotos = { ...cachedMealPhotos };
     for (const meal of (Array.isArray(local.meals) ? local.meals : []) as Meal[]) {
       const id = importId("meal", meal.id);
       const preview = meal.photoPreview ?? cachedMealPhotos[meal.id];
-      if (preview) importedMealPhotos[id] = preview;
-      await importDemoMeal(client, accountId, { ...meal, id, items: meal.items.map((item) => ({ ...item, id: importId("item", item.id) })) });
+      const localPhoto = await getLocalMealPhoto(meal.id).catch(() => null) ?? (preview ? await fetch(preview).then((response) => response.blob()) : null);
+      const compressed = localPhoto ? localPhoto.type === "image/jpeg" && localPhoto.size <= 3 * 1024 * 1024 ? localPhoto : await compressMealPhoto(localPhoto) : null;
+      const photoPath = compressed ? await uploadMealPhoto(client, accountId, id, compressed, true) : undefined;
+      await importDemoMeal(client, accountId, { ...meal, id, items: meal.items.map((item) => ({ ...item, id: importId("item", item.id) })), ...(photoPath ? { photoPath, photoBytes: compressed!.size } : {}) });
     }
-    writeMealPhotoCache(importedMealPhotos);
     for (const saved of (Array.isArray(local.savedMeals) ? local.savedMeals : []) as SavedMeal[]) await importDemoSavedMeal(client, accountId, { ...saved, id: importId("saved", saved.id) });
     const localCorrections = (Array.isArray(local.corrections) ? local.corrections : []) as FoodCorrection[];
     if (localCorrections.length) await insertFoodCorrections(client, accountId, localCorrections.map((entry) => ({ ...entry, id: importId("correction", entry.id) })));
     await importDemoWeights(client, accountId, ((Array.isArray(local.weights) ? local.weights : []) as WeightEntry[]).map((entry) => ({ ...entry, id: importId("weight", entry.id) })));
     const data = await loadAccountData(client, accountId);
-    const cachedPhotos = readMealPhotoCache(); setMealPhotoPreviews(cachedPhotos); setProfile(data.profile); setMeals(data.meals.map((meal) => ({ ...meal, photoPreview: cachedPhotos[meal.id] }))); setSavedMeals(data.savedMeals); setCorrections(data.corrections); setWeights(data.weights); setTargets(data.targets); setHasProfile(true); setCanImport(false);
+    const cachedPhotos = readMealPhotoCache(); setMealPhotoPreviews(cachedPhotos); setProfile(data.profile); setMeals(data.meals.map((meal) => ({ ...meal, photoPreview: meal.photoPreview ?? cachedPhotos[meal.id] }))); setSavedMeals(data.savedMeals); setCorrections(data.corrections); setWeights(data.weights); setTargets(data.targets); setHasProfile(true); setCanImport(false);
     localStorage.setItem(`porsi-imported-${accountId}`, "true");
     localStorage.removeItem(`porsi-import-pending-${accountId}`);
   }
@@ -522,8 +563,10 @@ export default function HomePage({ startInEditor = false }: { startInEditor?: bo
       setMessage("Data akun dihapus. Kamu telah keluar dari akun.");
       return;
     }
+    let localPhotoCleanupFailed = false;
+    try { await clearLocalMealPhotos(); } catch { localPhotoCleanupFailed = true; }
     localStorage.removeItem(STORAGE); localStorage.removeItem(PHOTO_CACHE); localStorage.removeItem(progressPhotoStorageKey(null)); setMealPhotoPreviews({});
-    setMeals([]); setSavedMeals([]); setCorrections([]); setWeights([]); setTargets([]); setProfile(defaultProfile); setMessage("Data catatan telah dihapus.");
+    setMeals([]); setSavedMeals([]); setCorrections([]); setWeights([]); setTargets([]); setProfile(defaultProfile); setMessage(localPhotoCleanupFailed ? "Catatan dihapus, tetapi berkas foto lokal belum dapat dibersihkan." : "Data catatan telah dihapus.");
   }
   function addCustom() {
     const calories = Number(customCalories), protein = Number(customProtein), carbs = Number(customCarbs), fat = Number(customFat);
@@ -607,6 +650,7 @@ export default function HomePage({ startInEditor = false }: { startInEditor?: bo
     setTab(next);
   }
 
+
   function finishWelcome(login: boolean) {
     localStorage.setItem("forkcast-welcome-seen", "true"); setWelcome(false);
     if (login) { setProfileInitialSection("account"); setTab("profil"); }
@@ -638,12 +682,12 @@ export default function HomePage({ startInEditor = false }: { startInEditor?: bo
     </aside>
 
     <main className="main">
-      <header className="topbar"><div className="mobile-brand"><span className="brand-mark"><Leaf size={20} /></span><strong>Forkcast</strong></div><div className="topbar-spacer" /><span className="demo-pill"><span className="pill-dot" /> {accountId ? "AKUN AKTIF" : "MODE DEMO"}</span><button className="avatar top-avatar" onClick={() => openTab("profil")} aria-label="Buka profil">{profile.name ? profile.name.charAt(0).toUpperCase() : "P"}</button></header>
+      <header className="topbar"><div className="mobile-brand"><span className="brand-mark"><Leaf size={20} /></span><strong>Forkcast</strong></div><div className="topbar-spacer" /><span className="demo-pill"><span className="pill-dot" /> {accountId ? "AKUN AKTIF" : "MODE DEMO"}</span>{tab === "beranda" ? <span className={`fc-streak${streak ? " is-active" : ""}`} aria-label={streak ? `Streak mencatat makanan ${streak} hari berturut-turut` : "Belum ada streak pencatatan makanan"}><Flame size={17} fill={streak ? "currentColor" : "none"} /><strong>{streak}</strong></span> : <button className="avatar top-avatar" onClick={() => openTab("profil")} aria-label="Buka profil">{profile.name ? profile.name.charAt(0).toUpperCase() : "P"}</button>}</header>
       {!online && <div className="offline-banner"><WifiOff size={17} /> Kamu sedang offline. Catatan lokal tetap bisa digunakan; analisis foto menunggu koneksi.</div>}
       {storageMode === "loading" && <div className="offline-banner" role="status">Memuat catatan akunmu...</div>}
       {storageMode === "error" && <div className="offline-banner" role="alert">Catatan akun belum dapat dimuat. <button className="text-button" onClick={() => setStorageMode("loading")}>Coba lagi</button></div>}
       <div className="content">
-        {tab === "beranda" && <HomeDashboard date={date} today={today()} profile={profile} target={target} meals={dayMeals} calendarMeals={meals} targets={targets} account={Boolean(accountId)} scan={homeScanActive ? { status: analysis ? "ready" : analysisError ? "error" : "processing", preview: galleryPreview, fileName: photoName, itemCount: analysis?.items.length ?? 0, onOpen: () => setViewScanDetail(true), onRetry: () => { if (photoFile) void analyzePhoto(photoFile, ""); }, onDismiss: () => { setHomeScanActive(false); setViewScanDetail(false); setAnalysis(null); setPhotoFile(null); setDraft([]); } } : undefined} onDate={setDate} onAdd={(type) => { if (type) setMealType(type); setAddActionsOpen(true); }} onPhoto={() => setAddActionsOpen(true)} onHistory={() => openTab("riwayat")} onMeal={setViewMeal} />}
+        {tab === "beranda" && <HomeDashboard date={date} today={currentDay} profile={profile} target={target} meals={dayMeals} calendarMeals={meals} recentUploads={recentUploads} targets={targets} account={Boolean(accountId)} scan={homeScanActive ? { status: analysis ? "ready" : analysisError ? "error" : "processing", preview: galleryPreview, fileName: photoName, itemCount: analysis?.items.length ?? 0, onOpen: () => setViewScanDetail(true), onRetry: () => { if (photoFile) void analyzePhoto(photoFile, ""); }, onDismiss: () => { setHomeScanActive(false); setViewScanDetail(false); setAnalysis(null); setPhotoFile(null); setDraft([]); } } : undefined} onDate={setDate} onAdd={(type) => { if (type) setMealType(type); setAddActionsOpen(true); }} onPhoto={() => setAddActionsOpen(true)} onHistory={() => openTab("riwayat")} onMeal={setViewMeal} />}
         {tab === "riwayat" && <><PageIntro eyebrow="CATATANMU" title="Riwayat makan" subtitle="Semua makanan yang kamu catat, tersusun dari yang terbaru." /><div className="history-actions"><Button onClick={() => setAddActionsOpen(true)}><Plus size={18} /> Catat makanan</Button><Button variant="outline" onClick={() => openEditor("tersimpan")}><Bookmark size={17} /> Makanan tersimpan</Button></div>{meals.length ? [...meals].sort((a, b) => `${b.date}${b.createdAt}`.localeCompare(`${a.date}${a.createdAt}`)).map((meal) => <Card className="history-card" key={meal.id}><div className="history-date">{formatDate(meal.date)} Â· {meal.eatenAt ? new Date(meal.eatenAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) : ""} Â· {meal.type}</div><div className="history-main"><div><h3><Button variant="link" onClick={() => setViewMeal(meal)}>{meal.title}</Button></h3><p>{meal.items.map((item) => `${item.name} ${itemAmountLabel(item)}`).join(" Â· ")}</p><small>{meal.method === "foto" ? "Ditinjau dari foto" : meal.method === "tersimpan" ? "Dari makanan tersimpan" : "Dicatat manual"} Â· Estimasi</small></div><div className="history-nutrition"><strong>{number(total(meal.items).calories)} <small>kkal</small></strong><span>P {number(total(meal.items).protein)} Â· K {number(total(meal.items).carbs)} Â· L {number(total(meal.items).fat)} g</span></div></div><div className="history-footer"><button onClick={() => { setDate(meal.date); setMealType(meal.type); openEditor("manual", meal.items, meal.title, meal.date); }}>Catat lagi <ArrowRight size={15} /></button><button onClick={() => saveExistingCombination(meal)}><Bookmark size={15} /> Simpan kombinasi</button><button className="danger-text" onClick={() => removeMeal(meal.id)}><Trash2 size={15} /> Hapus</button></div></Card>) : <EmptyState icon={<UtensilsCrossed size={27} />} title="Belum ada catatan" description="Mulai dengan mencari makanan atau menambahkan dari foto." action="Catat makanan" onAction={() => setAddActionsOpen(true)} />}</>}
         {tab === "progres" && <WeeklyProgress summary={weeklySummary} currentWeek={weekStart >= mondayOf(todayInTimeZone())} loading={!ready || storageMode === "loading"} error={storageMode === "error"} allWeights={weights} profile={profile} accountId={accountId} onPrevious={() => setWeekStart((current) => addCalendarDays(current, -7))} onNext={() => setWeekStart((current) => { const next = addCalendarDays(current, 7); return next <= mondayOf(todayInTimeZone()) ? next : current; })} onOpenDate={(selectedDate) => { setDate(selectedDate); setTab("beranda"); }} onRetry={() => setStorageMode("loading")} onSaveWeight={recordWeight} onRemoveWeight={removeWeight} />}
         {tab === "profil" && <ProfileView initialSection={profileInitialSection} profile={profile} targets={targets} weights={weights} accountId={accountId} accountEmail={accountEmail} storageMode={storageMode} supabaseConfigured={supabaseConfigured} hasProfile={hasProfile} canImport={canImport} recoveryMode={recoveryMode} onRecovered={() => setRecoveryMode(false)} onSaveProfile={saveProfile} onSaveTarget={saveTarget} onImport={importDemo} onRemoveAll={() => void removeAllData()} onOpenProgress={() => openTab("progres")} onDirtyChange={(value) => { profileDirtyRef.current = value; }} />}

@@ -46,7 +46,7 @@ export type MealItem = {
   corrected: boolean;
   packaged?: PackagedSnapshot;
 };
-export type Meal = { id: string; date: string; eatenAt?: string; type: MealType; title: string; method: "manual" | "foto" | "tersimpan"; items: MealItem[]; createdAt: string; photoPreview?: string };
+export type Meal = { id: string; date: string; eatenAt?: string; type: MealType; title: string; method: "manual" | "foto" | "tersimpan"; items: MealItem[]; createdAt: string; photoPath?: string; photoBytes?: number; photoPreview?: string };
 export type SavedMeal = {
   id: string;
   title: string;

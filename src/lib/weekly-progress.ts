@@ -49,6 +49,15 @@ export function mondayOf(date: string): string {
   return addCalendarDays(date, -(weekday === 0 ? 6 : weekday - 1));
 }
 
+export function mealLoggingStreak(meals: Meal[], todayDate = todayInTimeZone()): number {
+  const loggedDates = new Set(meals.filter((meal) => meal.items.length > 0 && meal.date <= todayDate).map((meal) => meal.date));
+  let date = loggedDates.has(todayDate) ? todayDate : addCalendarDays(todayDate, -1);
+  if (!loggedDates.has(date)) return 0;
+  let days = 0;
+  while (loggedDates.has(date)) { days += 1; date = addCalendarDays(date, -1); }
+  return days;
+}
+
 export function todayInTimeZone(now = new Date(), timeZone = WEEKLY_TIME_ZONE): string {
   const parts = new Intl.DateTimeFormat("en-US", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(now);
   const part = (type: string) => parts.find((entry) => entry.type === type)?.value;
