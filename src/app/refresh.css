@@ -71,20 +71,14 @@ body{background:#f6faf7;color:var(--ink);font-family:'DM Sans',sans-serif}button
 
 .fc-meal-detail-hero .fc-photo-header{height:100%;min-height:0;margin:0;border-radius:0;background:linear-gradient(145deg,#dbe9d9,#b8d0bc)}
 .fc-meal-detail-hero .fc-photo-header>div{color:#47745b;font-size:13px}
-.fc-meal-detail-page{overflow-y:auto;overscroll-behavior:contain;padding-bottom:84px}
-.fc-meal-detail-page .fc-meal-detail-hero{position:relative;inset:auto;height:auto;min-height:38dvh;display:grid;grid-template-rows:auto}
-.fc-meal-detail-page .fc-photo-header{height:auto;min-height:38dvh;aspect-ratio:4/3}
-.fc-meal-detail-page .fc-photo-header.has-photo{display:flex;align-items:center;justify-content:center}
-.fc-meal-detail-page .fc-photo-header img{display:block;width:100%;height:auto;max-height:min(76dvh,700px);object-fit:contain;object-position:center}
-.fc-meal-detail-page .fc-scan-detail-sheet{position:relative;inset:auto;min-height:0;margin-top:-24px;padding-bottom:0}
-.fc-meal-detail-page .fc-scan-detail-scroll{overflow:visible;padding-bottom:28px}
-.fc-meal-detail-page .fc-scan-detail-footer{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:min(100vw,430px);z-index:2}
-.fc-scan-result-page{overflow-y:auto;overscroll-behavior:contain;padding-bottom:84px}
-.fc-scan-result-page .fc-scan-detail-hero{position:relative;inset:auto;height:auto;min-height:38dvh;aspect-ratio:4/3}
-.fc-scan-result-page .fc-scan-detail-hero>img{object-fit:contain;object-position:center}
-.fc-scan-result-page .fc-scan-detail-sheet{position:relative;inset:auto;min-height:0;margin-top:-24px}
-.fc-scan-result-page .fc-scan-detail-scroll{overflow:visible;padding-bottom:28px}
-.fc-scan-result-page .fc-scan-detail-footer{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:min(100vw,430px);z-index:2}
+.fc-meal-detail-page,.fc-scan-result-page{display:flex;flex-direction:column;overflow:hidden}
+.fc-meal-detail-page .fc-meal-detail-hero,.fc-scan-result-page .fc-scan-detail-hero{position:relative;inset:auto;flex:0 0 38dvh;min-height:0;height:auto;aspect-ratio:auto}
+.fc-meal-detail-page .fc-photo-header{height:100%;min-height:0;aspect-ratio:auto}
+.fc-meal-detail-page .fc-photo-header img{width:100%!important;height:100%!important;object-fit:cover!important;object-position:center}
+.fc-scan-result-page .fc-scan-detail-hero>img{object-fit:cover;object-position:center}
+.fc-meal-detail-page .fc-scan-detail-sheet,.fc-scan-result-page .fc-scan-detail-sheet{position:relative;inset:auto;flex:1;min-height:0;margin-top:-24px;padding-bottom:0}
+.fc-meal-detail-page .fc-scan-detail-scroll,.fc-scan-result-page .fc-scan-detail-scroll{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding-bottom:28px}
+.fc-meal-detail-page .fc-scan-detail-footer,.fc-scan-result-page .fc-scan-detail-footer{position:relative;inset:auto;left:auto;bottom:auto;flex:0 0 auto;transform:none;width:100%;z-index:2}
 .memory-card-actions [data-variant=destructive]{color:var(--destructive-foreground,#fff);padding-inline:12px}
 .fc-summary-card{padding:0;overflow:hidden;border-radius:18px;box-shadow:none;margin:9px 0}
 .fc-summary-card-button{width:100%;display:flex;align-items:stretch;text-align:left;background:#fff;color:var(--foreground);padding:0;min-height:116px}
