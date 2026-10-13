@@ -64,18 +64,18 @@ export function todayInTimeZone(now = new Date(), timeZone = WEEKLY_TIME_ZONE): 
   return `${part("year")}-${part("month")}-${part("day")}`;
 }
 
-export function formatWeeklyDate(date: string, options: Intl.DateTimeFormatOptions): string {
+export function formatWeeklyDate(date: string, options: Intl.DateTimeFormatOptions, locale = "id-ID"): string {
   const [year, month, day] = dateParts(date);
-  return new Intl.DateTimeFormat("id-ID", { ...options, timeZone: "UTC" }).format(new Date(Date.UTC(year, month - 1, day, 12)));
+  return new Intl.DateTimeFormat(locale, { ...options, timeZone: "UTC" }).format(new Date(Date.UTC(year, month - 1, day, 12)));
 }
 
-export function weeklyRangeLabel(start: string): string {
+export function weeklyRangeLabel(start: string, locale = "id-ID"): string {
   const end = addCalendarDays(start, 6);
-  const a = formatWeeklyDate(start, { day: "numeric", month: "short", year: "numeric" });
-  const b = formatWeeklyDate(end, { day: "numeric", month: "short", year: "numeric" });
+  const a = formatWeeklyDate(start, { day: "numeric", month: "short", year: "numeric" }, locale);
+  const b = formatWeeklyDate(end, { day: "numeric", month: "short", year: "numeric" }, locale);
   const [ay, am] = start.split("-");
   const [by, bm] = end.split("-");
-  return ay === by && am === bm ? `${formatWeeklyDate(start, { day: "numeric" })}–${b}` : ay === by ? `${formatWeeklyDate(start, { day: "numeric", month: "short" })}–${b}` : `${a}–${b}`;
+  return ay === by && am === bm ? `${formatWeeklyDate(start, { day: "numeric" }, locale)}–${b}` : ay === by ? `${formatWeeklyDate(start, { day: "numeric", month: "short" }, locale)}–${b}` : `${a}–${b}`;
 }
 
 // The app has no timezone setting yet. Asia/Makassar is UTC+08:00 year-round.
@@ -101,7 +101,7 @@ function sumValid(items: Meal["items"], key: keyof Nutrients): number | null {
   return values.some((value) => value === null) ? null : values.reduce<number>((sum, value) => sum + (value ?? 0), 0);
 }
 
-export function summarizeWeek(start: string, meals: Meal[], targets: TargetRecord[], weights: WeightEntry[], todayDate = todayInTimeZone()): WeeklySummary {
+export function summarizeWeek(start: string, meals: Meal[], targets: TargetRecord[], weights: WeightEntry[], todayDate = todayInTimeZone(), locale = "id-ID"): WeeklySummary {
   const monday = mondayOf(start);
   const days: WeeklyDay[] = Array.from({ length: 7 }, (_, index) => {
     const date = addCalendarDays(monday, index);
@@ -130,15 +130,15 @@ export function summarizeWeek(start: string, meals: Meal[], targets: TargetRecor
   const weightEntries = weights.filter((entry) => entry.date >= monday && entry.date <= end && entry.date <= todayDate && Number.isFinite(entry.weight) && entry.weight >= 20 && entry.weight <= 400).sort((a, b) => a.date.localeCompare(b.date));
   const weightChange = weightEntries.length >= 2 ? { first: weightEntries[0], latest: weightEntries[weightEntries.length - 1], difference: weightEntries[weightEntries.length - 1].weight - weightEntries[0].weight } : null;
   const insights: string[] = [];
-  if (loggedDays) insights.push(`Makanan tercatat pada ${loggedDays} dari 7 hari (${mealCount} catatan makan).`);
+  if (loggedDays) insights.push(locale === "en-US" ? `Food logged on ${loggedDays} of 7 days (${mealCount} meal logs).` : `Makanan tercatat pada ${loggedDays} dari 7 hari (${mealCount} catatan makan).`);
   if (comparable.length >= 2) {
     const difference = comparable.reduce((sum, day) => sum + (day.calories ?? 0) - (day.target ?? 0), 0) / comparable.length;
     const roundedDifference = Math.round(difference);
-    insights.push(roundedDifference === 0
-      ? `Rata-rata kalori tercatat sekitar target pada ${comparable.length} hari dengan catatan dan target aktif.`
-      : `Rata-rata kalori tercatat ${Math.abs(roundedDifference).toLocaleString("id-ID")} kkal ${roundedDifference > 0 ? "di atas" : "di bawah"} target pada ${comparable.length} hari dengan catatan dan target aktif.`);
+    insights.push(locale === "en-US"
+      ? roundedDifference === 0 ? `Logged calories averaged around the goal across ${comparable.length} days with logs and an active goal.` : `Logged calories averaged ${Math.abs(roundedDifference).toLocaleString(locale)} kcal ${roundedDifference > 0 ? "above" : "below"} the goal across ${comparable.length} days with logs and an active goal.`
+      : roundedDifference === 0 ? `Rata-rata kalori tercatat sekitar target pada ${comparable.length} hari dengan catatan dan target aktif.` : `Rata-rata kalori tercatat ${Math.abs(roundedDifference).toLocaleString(locale)} kkal ${roundedDifference > 0 ? "di atas" : "di bawah"} target pada ${comparable.length} hari dengan catatan dan target aktif.`);
   }
-  if (weightChange) insights.push(`Berat tercatat ${weightEntries.length} kali; selisih ${Math.abs(weightChange.difference).toLocaleString("id-ID", { maximumFractionDigits: 1 })} kg antara ${formatWeeklyDate(weightChange.first.date, { day: "numeric", month: "short" })} dan ${formatWeeklyDate(weightChange.latest.date, { day: "numeric", month: "short" })}.`);
+  if (weightChange) insights.push(locale === "en-US" ? `Weight logged ${weightEntries.length} times; a difference of ${Math.abs(weightChange.difference).toLocaleString(locale, { maximumFractionDigits: 1 })} kg between ${formatWeeklyDate(weightChange.first.date, { day: "numeric", month: "short" }, locale)} and ${formatWeeklyDate(weightChange.latest.date, { day: "numeric", month: "short" }, locale)}.` : `Berat tercatat ${weightEntries.length} kali; selisih ${Math.abs(weightChange.difference).toLocaleString(locale, { maximumFractionDigits: 1 })} kg antara ${formatWeeklyDate(weightChange.first.date, { day: "numeric", month: "short" }, locale)} dan ${formatWeeklyDate(weightChange.latest.date, { day: "numeric", month: "short" }, locale)}.`);
   return {
     start: monday, end, days, loggedDays, mealCount, calorieDays: calorieDays.length,
     averageCalories: calorieDays.length ? calorieDays.reduce((sum, day) => sum + (day.calories ?? 0), 0) / calorieDays.length : null,

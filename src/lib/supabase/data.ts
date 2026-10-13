@@ -1,9 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { defaultProfile, type Meal, type MealItem, type Profile, type SavedMeal, type WeightEntry } from "@/lib/food";
-import type { TargetRecord } from "@/lib/target";
+import type { MacroTargets, TargetRecord } from "@/lib/target";
 import type { PackagedProduct, UserProduct } from "@/lib/packaged-food";
 import { savedMealError, type FoodCorrection } from "@/lib/meal-memory";
 import { MEAL_PHOTO_BUCKET } from "@/lib/meal-photos";
+import type { AppLanguage } from "@/lib/language";
 
 type Row = Record<string, unknown>;
 const numeric = (value: unknown) => Number(value ?? 0);
@@ -65,7 +66,10 @@ export async function loadAccountData(client: SupabaseClient, userId: string) {
   const targets: TargetRecord[] = ((targetsResult.data ?? []) as Row[]).map((row) => ({
     id: String(row.id), calories: numeric(row.calories), source: row.source as TargetRecord["source"],
     formulaVersion: row.formula_version ? String(row.formula_version) : null,
-    inputs: row.inputs as TargetRecord["inputs"], effectiveAt: String(row.effective_at),
+    inputs: row.inputs as TargetRecord["inputs"],
+    macros: row.protein_target !== null && row.protein_target !== undefined && row.carbs_target !== null && row.carbs_target !== undefined && row.fat_target !== null && row.fat_target !== undefined
+      ? { protein: numeric(row.protein_target), carbs: numeric(row.carbs_target), fat: numeric(row.fat_target) } as MacroTargets : undefined,
+    effectiveAt: String(row.effective_at),
     createdAt: String(row.created_at), note: String(row.note ?? ""),
   }));
   const corrections: FoodCorrection[] = ((correctionsResult.data ?? []) as Row[]).map((row) => ({
@@ -75,7 +79,12 @@ export async function loadAccountData(client: SupabaseClient, userId: string) {
   const userProducts: UserProduct[] = ((productsResult.data ?? []) as Row[]).map((row) => ({
     id: String(row.id), product: row.product_snapshot as PackagedProduct, updatedAt: String(row.updated_at),
   }));
-  return { profile, hasProfile: Boolean(p), meals, savedMeals, weights, targets, corrections, userProducts };
+  return { profile, locale: p?.locale === "en-US" ? "en-US" as AppLanguage : p?.locale === "id-ID" ? "id-ID" as AppLanguage : null, hasProfile: Boolean(p), meals, savedMeals, weights, targets, corrections, userProducts };
+}
+
+export async function saveAccountLanguage(client: SupabaseClient, userId: string, language: AppLanguage) {
+  const { error } = await client.from("profiles").update({ locale: language }).eq("user_id", userId);
+  if (error) throw error;
 }
 
 export async function saveProfileWithWeight(client: SupabaseClient, profile: Profile, localDate: string, recordWeight = false) {
@@ -89,7 +98,12 @@ export async function saveProfileWithWeight(client: SupabaseClient, profile: Pro
 }
 
 export async function saveCalorieTarget(client: SupabaseClient, record: TargetRecord) {
-  const { error } = await client.rpc("save_calorie_target", {
+  const { error } = record.macros ? await client.rpc("save_nutrition_target", {
+    p_id: record.id, p_calories: record.calories, p_protein: record.macros.protein,
+    p_carbs: record.macros.carbs, p_fat: record.macros.fat, p_source: record.source,
+    p_formula_version: record.formulaVersion, p_inputs: record.inputs,
+    p_effective_at: record.effectiveAt, p_note: record.note,
+  }) : await client.rpc("save_calorie_target", {
     p_id: record.id, p_calories: record.calories, p_source: record.source,
     p_formula_version: record.formulaVersion, p_inputs: record.inputs,
     p_effective_at: record.effectiveAt, p_note: record.note,

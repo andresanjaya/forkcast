@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { AnalysisSchema, imageType } from "../src/lib/analysis.ts";
 
 const valid = {
-  items: [{ candidateName: "Nasi putih", estimatedServing: { value: 1, unit: "centong", gramsMin: 100, gramsMax: 150 }, visibleNotes: "Terlihat nasi", confidence: "medium", needsConfirmation: true }],
+  items: [{ candidateName: "Nasi putih", estimatedServing: { value: 1, unit: "centong", gramsMin: 100, gramsMax: 150 }, estimatedNutritionPer100g: { calories: 130, protein: 2.7, carbs: 28, fat: 0.3 }, nutritionConfidence: "medium", visibleNotes: "Terlihat nasi", confidence: "medium", needsConfirmation: true }],
   disclaimer: "Perkiraan dari foto; periksa sebelum menyimpan.",
 };
 

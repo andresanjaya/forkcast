@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { activeTarget, addTargetRecord, estimateTarget, profileError, putWeightRecord, validTarget } from "../src/lib/target.ts";
+import { activeTarget, addTargetRecord, estimateNutritionGoals, estimateTarget, profileError, putWeightRecord, validMacroTargets, validTarget } from "../src/lib/target.ts";
 
 const profile = { name: "", age: 30, height: 170, weight: 70, sex: "pria", activity: "rendah", goal: "jaga", calorieTarget: 2000 };
 
@@ -22,6 +22,18 @@ test("activity and goal changes affect suggestions but never the active target",
   const history = [{ id: "old", calories: 2000, source: "manual", formulaVersion: null, inputs: null, effectiveAt: "2026-10-11T00:00:00.000Z", createdAt: "2026-10-11T00:00:00.000Z", note: "" }];
   assert.equal(activeTarget(history).calories, 2000);
   assert.equal(addTargetRecord(history, { ...history[0], id: "new", calories: higher.calories, effectiveAt: "2026-10-11T01:00:00.000Z", createdAt: "2026-10-11T01:00:00.000Z" }).length, 2);
+});
+
+test("weight gain recommendation is traceable and leaves active goals untouched", () => {
+  const gaining = { ...profile, goal: "naik" };
+  const slow = estimateNutritionGoals(gaining, 3, 24);
+  const fast = estimateNutritionGoals(gaining, 3, 4);
+  assert.equal(slow.calories, estimateTarget({ ...profile, goal: "jaga" }).calories + 300);
+  assert.equal(fast.calories, estimateTarget({ ...profile, goal: "jaga" }).calories + 500);
+  assert.equal(slow.inputs.gainKg, 3);
+  assert.equal(slow.inputs.gainWeeks, 24);
+  assert.ok(validMacroTargets(slow.macros));
+  assert.equal(gaining.calorieTarget, 2000);
 });
 
 test("prefer not to say and invalid inputs require a manual target", () => {

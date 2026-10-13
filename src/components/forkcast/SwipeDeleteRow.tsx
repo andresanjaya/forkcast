@@ -2,6 +2,8 @@
 
 import { useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { tr, useLanguage } from "@/lib/language";
 
 export default function SwipeDeleteRow({ children, className = "", label, onDelete }: {
   children: ReactNode;
@@ -9,6 +11,7 @@ export default function SwipeDeleteRow({ children, className = "", label, onDele
   label: string;
   onDelete: () => void;
 }) {
+  const { language } = useLanguage();
   const start = useRef<{ x: number; y: number } | null>(null);
   const [offset, setOffset] = useState(0);
   const [revealed, setRevealed] = useState(false);
@@ -37,7 +40,7 @@ export default function SwipeDeleteRow({ children, className = "", label, onDele
   }
 
   return <div className={`fc-swipe-delete ${className}`}>
-    <button className="fc-swipe-delete-action" type="button" aria-label={label} tabIndex={revealed ? 0 : -1} onClick={onDelete}><Trash2 size={19} /><span>Hapus</span></button>
+    <Button variant="destructive" className="fc-swipe-delete-action" type="button" aria-label={label} tabIndex={revealed ? 0 : -1} onClick={onDelete}><Trash2 size={19} /><span>{tr(language, "Hapus", "Delete")}</span></Button>
     <div className="fc-swipe-delete-content" style={{ transform: `translateX(${offset}px)` }} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerUp}>
       {children}
     </div>
