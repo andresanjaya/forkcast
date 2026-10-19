@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const source = join(root, "assets", "Forkcast-Concept-03-500x500.png");
+const source = join(root, "assets", "logo.png");
 const icons = [
   ["favicon-32.png", 32],
   ["favicon-48.png", 48],

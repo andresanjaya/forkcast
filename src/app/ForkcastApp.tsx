@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import Image from "next/image";
 import { getSupabaseBrowser } from "@/lib/supabase/browser";
 import { deleteAllAccountData, deleteMeal as deleteRemoteMeal, deleteSavedMeal as deleteRemoteSavedMeal, deleteWeight as deleteRemoteWeight, importDemoMeal, importDemoSavedMeal, importDemoWeights, insertFoodCorrections, insertMeal as insertRemoteMeal, insertSavedMeal, loadAccountData, removeMealPhoto, saveAccountLanguage, saveCalorieTarget, saveProfileWithWeight, saveUserProduct, updateSavedMeal, uploadMealPhoto } from "@/lib/supabase/data";
 import ProfileView from "./ProfileView";
@@ -683,7 +684,7 @@ export default function HomePage({ startInEditor = false }: { startInEditor?: bo
   return <div className={editor ? "entry-app" : "app-shell"}>
     {!editor && <>
     <aside className="sidebar">
-      <div className="brand"><span className="brand-mark"><Leaf size={23} strokeWidth={2.4} /></span><span>Forkcast</span></div>
+      <div className="brand"><span className="brand-mark"><Image src="/logo.svg" alt="" width={23} height={23} /></span><span>Forkcast</span></div>
       <div className="sidebar-label">{tr(language, "MENU", "MENU")}</div>
       <nav aria-label={tr(language, "Navigasi utama", "Main navigation")} className="side-nav">
         <NavButton active={tab === "beranda"} icon={<Home size={19} />} label={tr(language, "Beranda", "Home")} onClick={() => openTab("beranda")} />

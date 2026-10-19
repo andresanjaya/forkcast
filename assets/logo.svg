@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1254 1254" role="img" aria-label="Forkcast camera and fork logo">
+  <defs>
+    <mask id="camera-cutouts" maskUnits="userSpaceOnUse" x="0" y="0" width="1254" height="1254">
+      <rect width="1254" height="1254" fill="#fff"/>
+      <circle cx="627" cy="650" r="225" fill="#000"/>
+      <path fill="#000" d="M576 875h26v42h-14a12 12 0 0 1-12-12v-30Zm76 0h26v30a12 12 0 0 1-12 12h-14v-42Z"/>
+    </mask>
+    <mask id="fork-slots" maskUnits="userSpaceOnUse" x="500" y="490" width="254" height="440">
+      <rect x="500" y="490" width="254" height="440" fill="#fff"/>
+      <path fill="#000" d="M557 506h29v160a14.5 14.5 0 0 1-29 0V506Zm59 0h28v160a14 14 0 0 1-28 0V506Zm58 0h23v160a11.5 11.5 0 0 1-23 0V506Z"/>
+    </mask>
+  </defs>
+  <path fill="#007A55" mask="url(#camera-cutouts)" d="M354 404h83 C460 404 474 394 488 374 C500 358 510 340 520 326 C535 306 550 308 573 308 H703 C727 308 742 316 758 339 C770 357 782 380 796 398 C807 413 824 404 844 404 H900a97 97 0 0 1 97 97v319a97 97 0 0 1-97 97H354a97 97 0 0 1-97-97V501a97 97 0 0 1 97-97Z"/>
+  <g fill="#007A55" mask="url(#fork-slots)">
+    <rect x="527" y="506" width="30" height="178" rx="15"/>
+    <rect x="586" y="496" width="30" height="188" rx="15"/>
+    <rect x="644" y="496" width="30" height="188" rx="15"/>
+    <rect x="697" y="506" width="30" height="178" rx="15"/>
+    <path d="M527 661h200c-1 54-23 89-67 116-6 4-8 12-8 23v117h-50V800c0-11-2-19-8-23-44-27-66-62-67-116Z"/>
+  </g>
+</svg>
